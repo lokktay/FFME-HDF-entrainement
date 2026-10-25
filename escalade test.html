@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Plateforme Entraînement Escalade</title>
+    
+    <!-- Bibliothèques externes -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- FIREBASE (Version Compat pour script unique) -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        /* === VARIABLES & RESET === */
+        :root { 
+            --ffme-blue: #0055A4; --ffme-blue-light: #2A7BCA; --ffme-blue-dark: #003B73;
+            --ffme-red: #EF4135; --ffme-red-light: #FF6B60;
+            --gradient-primary: linear-gradient(135deg, var(--ffme-blue) 0%, var(--ffme-blue-dark) 100%);
+            --gradient-button: linear-gradient(to right, var(--ffme-blue), var(--ffme-blue-light));
+            --gradient-button-red: linear-gradient(to right, var(--ffme-red), var(--ffme-red-light));
+            --gradient-surface: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+            --bg-color: #F1F5F9; --surface: #FFFFFF; --text-dark: #1E293B; --text-muted: #64748B; --border-color: #E2E8F0;
+            --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+            --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+            --radius-md: 10px; --radius-lg: 16px; --radius-xl: 24px;
+        }
+        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { margin: 0; background-color: var(--bg-color); color: var(--text-dark); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+        h1, h2, h3, h4 { margin-top: 0; color: var(--text-dark); }
+        hr { border: 0; border-top: 1px solid var(--border-color); margin: 2rem 0; }
+        @keyframes fadeInScale { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* === LOADER === */
+        #loader-screen { display: flex; flex-direction: column; height: 100vh; justify-content: center; align-items: center; background: var(--bg-color); color: var(--ffme-blue); font-weight: 800; font-size: 1.5rem; gap: 1rem; }
+        .spinner { width: 40px; height: 40px; border: 4px solid rgba(0, 85, 164, 0.2); border-top-color: var(--ffme-blue); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* === AUTH SCREEN === */
+        #auth-screen { display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: var(--gradient-primary); padding: 1rem; }
+        .auth-container { background: var(--surface); padding: 2.5rem; border-radius: var(--radius-xl); width: 100%; max-width: 420px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        .auth-container h2 { text-align: center; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-top: 0; font-weight: 800; font-size: 1.75rem; margin-bottom: 1.5rem;}
+        .auth-tabs { display: flex; margin-bottom: 1.5rem; border-bottom: 2px solid var(--border-color); gap: 1rem; }
+        .auth-tab { flex: 1; text-align: center; padding: 0.75rem 0; cursor: pointer; font-weight: 600; color: var(--text-muted); transition: color 0.2s; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .auth-tab.active { color: var(--ffme-blue); border-bottom-color: var(--ffme-blue); }
+
+        /* === HEADER & NAVIGATION === */
+        header { background-color: var(--surface); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow-sm); border-bottom: 3px solid transparent; border-image: linear-gradient(to right, var(--ffme-blue), var(--ffme-red)) 1; }
+        .header-left { display: flex; align-items: center; gap: 1.5rem; }
+        h1 { margin: 0; font-size: 1.5rem; font-weight: 800; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+        .user-info { background: #F8FAFC; padding: 0.4rem 1rem; border-radius: 9999px; font-size: 0.9rem; font-weight: 600; color: var(--ffme-blue-dark); border: 1px solid #E2E8F0; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; position: relative;}
+        
+        .account-dropdown { display: none; position: absolute; top: 110%; left: 0; background: white; box-shadow: var(--shadow-md); border-radius: var(--radius-md); border: 1px solid var(--border-color); width: 250px; z-index: 1000; overflow: hidden; }
+        .account-dropdown button { width: 100%; text-align: left; padding: 0.75rem 1rem; border: none; background: none; font-size: 0.9rem; font-weight: 600; cursor: pointer; border-bottom: 1px solid var(--border-color); }
+        .account-dropdown button:hover { background: #F1F5F9; color: var(--ffme-blue); }
+
+        nav { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 2px; align-items: center;}
+        nav button { background: none; border: none; color: var(--text-muted); font-size: 0.95rem; font-weight: 600; cursor: pointer; padding: 0.5rem 1rem; border-radius: var(--radius-md); transition: all 0.2s; white-space: nowrap; }
+        nav button.active { background: var(--gradient-button); color: white; box-shadow: var(--shadow-sm); }
+        #btn-logout { background-color: #FEF2F2; color: var(--ffme-red); border: 1px solid #FECACA; }
+
+        /* === LAYOUT === */
+        #app-content { display: none; }
+        .tab-content { display: none; padding: 2.5rem 1.5rem; max-width: 1280px; margin: 0 auto; animation: slideIn 0.3s ease-out; }
+        .tab-content.active { display: block; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;}
+        .section-title { font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--text-dark);}
+
+        /* === BUTTONS & FORMS === */
+        .btn-primary { background: var(--gradient-button); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: var(--radius-md); cursor: pointer; font-size: 0.95rem; font-weight: 600; transition: all 0.2s; box-shadow: var(--shadow-sm); }
+        .btn-secondary { background: var(--gradient-button-red); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: var(--radius-md); cursor: pointer; font-size: 0.95rem; font-weight: 600; box-shadow: var(--shadow-sm); }
+        .btn-outline { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-dark); padding: 0.6rem 1.2rem; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; transition: all 0.2s; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.5rem;}
+        .btn-icon { background: none; border: none; cursor: pointer; font-size: 1.2rem; transition: all 0.2s; padding: 0.4rem; border-radius: var(--radius-md); display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+        
+        .form-group { margin-bottom: 1.25rem; width: 100%; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.9rem; color: var(--text-dark); }
+        .form-control { width: 100%; padding: 0.8rem 1rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 0.95rem; transition: all 0.2s; background: var(--surface); color: var(--text-dark); }
+        textarea.form-control { resize: vertical; min-height: 100px; }
+        
+        .search-bar { width: 320px; padding: 0.8rem 1.2rem 0.8rem 2.5rem; border: 1px solid var(--border-color); border-radius: 9999px; font-size: 0.9rem; outline: none; background: var(--surface) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%2364748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 14px center; }
+
+        /* === GRIDS & CARDS === */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+        .card { background: var(--gradient-surface); padding: 1.5rem; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); position: relative; transition: all 0.2s; display: flex; flex-direction: column; overflow: hidden; }
+        .card.alert-rpe { background: #FEF2F2; border-color: #FCA5A5; border-left: 4px solid var(--ffme-red); }
+        .card.interactive { cursor: pointer; }
+        .card.interactive:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); border-color: #CBD5E1; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }
+        .card-title { font-weight: 700; font-size: 1.15rem; color: var(--text-dark); margin-bottom: 0.25rem; line-height: 1.3;}
+        .card-category { display: inline-flex; align-items: center; background: #EFF6FF; padding: 0.3rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; color: var(--ffme-blue); text-transform: uppercase; border: 1px solid #BFDBFE;}
+        
+        .status-badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; color: white; display: inline-flex;}
+        .status-done { background: linear-gradient(to right, #10B981, #059669); }
+        .status-alert { background: var(--gradient-button-red); }
+
+        .internal-tabs { display: inline-flex; background: #E2E8F0; padding: 0.3rem; border-radius: var(--radius-lg); gap: 0.25rem; margin-bottom: 1.5rem;}
+        .internal-tabs button { background: transparent; border: none; padding: 0.6rem 1.25rem; border-radius: var(--radius-md); font-size: 0.9rem; font-weight: 600; color: var(--text-muted); cursor: pointer; transition: all 0.2s; }
+        .internal-tabs button.active { background: var(--surface); color: var(--ffme-blue); box-shadow: var(--shadow-sm); }
+        .filter-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
+        .filter-tag { padding: 0.4rem 1rem; background: var(--surface); border: 1px solid var(--border-color); border-radius: 9999px; cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--text-muted); }
+        .filter-tag.active { background: var(--gradient-button); color: white; border-color: transparent; }
+
+        /* === NOTIFICATIONS PANEL === */
+        .notifications-panel { background: var(--gradient-surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); border-left: 4px solid #F59E0B; box-shadow: var(--shadow-md); margin-bottom: 2rem; position: relative;}
+        .notif-item { font-size: 0.95rem; padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); display: flex; gap: 1rem; align-items: baseline;}
+        .notif-item:last-child { border-bottom: none; padding-bottom: 0;}
+        .notif-date { color: var(--text-muted); font-size: 0.8rem; white-space: nowrap; font-weight: 600; background: #F1F5F9; padding: 0.2rem 0.5rem; border-radius: 4px;}
+        .btn-view-all-notifs { position: absolute; top: 1.5rem; right: 1.5rem; font-size: 0.85rem; font-weight: 700; color: var(--ffme-blue); background: none; border: none; cursor: pointer; }
+        .btn-view-all-notifs:hover { text-decoration: underline; }
+
+        /* === MODALS === */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center; }
+        .modal { background: var(--surface); padding: 2rem; border-radius: var(--radius-xl); width: 95%; max-width: 550px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: fadeInScale 0.2s ease-out; }
+        .modal-large { max-width: 1100px; padding: 2rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color); }
+        .close-btn { background: var(--bg-color); border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center;}
+        
+        /* === MESSAGERIE CHAT === */
+        .chat-panel { position: fixed; bottom: 20px; right: 20px; width: 360px; height: 500px; background: white; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); display: none; flex-direction: column; z-index: 2000; border: 1px solid var(--border-color); overflow: hidden; animation: slideIn 0.2s ease-out; transition: all 0.3s; }
+        .chat-panel.fullscreen { top: 0; left: 0; bottom: 0; right: 0; width: 100%; height: 100%; border-radius: 0; z-index: 3000; }
+        .chat-header { background: var(--gradient-primary); color: white; padding: 1rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+        .chat-header-btn { background: none; border: none; color: white; cursor: pointer; font-size: 1.2rem; font-weight: bold; opacity: 0.8; transition: opacity 0.2s; padding: 0 0.5rem; }
+        .chat-header-btn:hover { opacity: 1; }
+        
+        /* Liste et Annuaire */
+        #chat-view-list { display: flex; flex-direction: column; flex: 1; overflow-y: auto; background: var(--surface); }
+        .chat-section-title { padding: 0.75rem 1rem; background: var(--bg-color); font-size: 0.85rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border-color); border-top: 1px solid var(--border-color); margin:0; }
+        .chat-user-item { padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; gap: 1rem; align-items: center; cursor: pointer; transition: background 0.2s; }
+        .chat-user-item:hover { background: #F8FAFC; }
+        .chat-user-item .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--bg-color); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; border: 2px solid var(--border-color); }
+        .chat-user-item .details { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .chat-user-item .name { font-weight: 700; color: var(--text-dark); }
+        .chat-user-item .role { font-size: 0.75rem; color: var(--ffme-blue); font-weight: 600; background: #EFF6FF; padding: 2px 6px; border-radius: 4px; align-self: flex-start; margin-top: 2px; }
+        .chat-user-item .last-msg { font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 4px; }
+        
+        /* Conversation */
+        #chat-view-conversation { display: none; flex-direction: column; flex: 1; background: var(--bg-color); }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+        .chat-msg { max-width: 80%; padding: 0.6rem 1rem; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; position: relative; }
+        .chat-msg .date { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; text-align: right; display: block; }
+        .msg-me { align-self: flex-end; background: var(--ffme-blue); color: white; border-bottom-right-radius: 2px; }
+        .msg-them { align-self: flex-start; background: white; border: 1px solid var(--border-color); color: var(--text-dark); border-bottom-left-radius: 2px; box-shadow: var(--shadow-sm); }
+        .chat-input { display: flex; padding: 0.75rem; border-top: 1px solid var(--border-color); background: white; }
+        .chat-input input { flex: 1; border: 1px solid var(--border-color); padding: 0.5rem; border-radius: 99px; outline: none; padding-left: 1rem; }
+        .chat-input button { background: none; border: none; color: var(--ffme-blue); font-weight: 700; cursor: pointer; padding: 0 0.5rem; }
+        
+        .chat-btn-float { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: var(--gradient-primary); color: white; border: none; font-size: 1.8rem; box-shadow: var(--shadow-lg); cursor: pointer; z-index: 1999; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+        .chat-btn-float:hover { transform: scale(1.05); }
+
+        /* === BUILDER === */
+        .modal-builder { max-width: 1400px; height: 95vh; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-color); padding: 1rem; }
+        .builder-container { display: flex; gap: 1.5rem; flex: 1; overflow: hidden; margin-top: 1rem; }
+        .builder-sidebar { flex: 3; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);}
+        .builder-main { flex: 2; display: flex; flex-direction: column; background: var(--surface); padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color);}
+        #builder-blocks-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; align-content: start; overflow-y: auto; flex: 1; padding-bottom: 2rem;}
+        .draggable-item { cursor: grab; background: var(--surface); padding: 1rem; margin-bottom: 0.75rem; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-left: 4px solid var(--ffme-blue); box-shadow: var(--shadow-sm); }
+        
+        /* === CALENDAR & PROFILES === */
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; text-align: center; }
+        .calendar-day-name { font-weight: 700; color: var(--text-muted); font-size: 0.8rem; padding-bottom: 0.5rem; text-transform: uppercase;}
+        .calendar-day { background: var(--surface); border: 1px solid var(--border-color); padding: 0.75rem 0.5rem; border-radius: var(--radius-md); cursor: pointer; min-height: 95px; display: flex; flex-direction: column; align-items: center; position: relative; transition: all 0.2s;}
+        .calendar-day:hover { border-color: var(--ffme-blue-light); background: #F8FAFC; transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+        .calendar-day.today { font-weight: 800; border-width: 2px; border-color: var(--ffme-blue); }
+        
+        .calendar-day.active-day { background-color: #FEF2F2; border-color: #FCA5A5; }
+        .calendar-day.active-day .day-number { color: var(--ffme-red); font-weight: 800;}
+        .cal-session-indicator { font-size: 0.7rem; font-weight: 700; color: white; background: var(--gradient-button); margin-top: 0.35rem; padding: 3px 6px; border-radius: 4px; width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-shadow: var(--shadow-sm); }
+        .cal-note-indicator { font-size: 0.7rem; color: var(--text-dark); margin-top: 0.25rem; background: #F1F5F9; padding: 3px 6px; border-radius: 4px; width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1px solid var(--border-color); font-weight: 600; }
+        
+        .profile-header { display: flex; align-items: center; gap: 1.5rem; background: var(--surface); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem; border: 1px solid var(--border-color); }
+        .avatar-wrapper { position: relative; width: 100px; height: 100px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: var(--shadow-md); background: var(--bg-color); overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; color: var(--ffme-blue); }
+        .avatar-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+        .avatar-upload-btn { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: white; font-size: 0.7rem; text-align: center; padding: 0.25rem 0; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+        .avatar-upload-btn:hover { background: rgba(0,85,164,0.9); }
+        .avatar-input { display: none; }
+        
+        .profile-section { background: var(--surface); padding: 1.75rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem; border: 1px solid var(--border-color); }
+        .charts-container { display: flex; flex-wrap: wrap; gap: 1.5rem; justify-content: center; }
+        .chart-box { width: 100%; max-width: 450px; background: var(--bg-color); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); }
+        
+        .timer-panel { background: #0F172A; color: white; padding: 2rem; border-radius: var(--radius-lg); text-align: center; margin-bottom: 1.5rem; display: none;}
+        .timer-display { font-size: 5.5rem; font-weight: 800; margin: 1.5rem 0; font-variant-numeric: tabular-nums; line-height: 1; text-shadow: 0 4px 20px rgba(0,0,0,0.4);}
+        .timer-inputs input { width: 80px; text-align: center; padding: 0.75rem; border-radius: var(--radius-md); border: none; font-weight: 700; font-size: 1.1rem; }
+        
+        .rpe-slider { width: 100%; margin: 10px 0; accent-color: var(--ffme-red); cursor: pointer; }
+        .comp-item { background: var(--bg-color); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 0.75rem; border: 1px solid var(--border-color); }
+        .parent-code-badge { background: #FEF2F2; color: var(--ffme-red-light); font-weight: 800; padding: 0.5rem 1rem; border-radius: 99px; border: 1px dashed #FCA5A5; display: inline-block; margin-top: 0.5rem; font-size: 0.9rem;}
+    </style>
+</head>
+<body>
+
+    <!-- LOADER (Attente de la BDD Cloud) -->
+    <div id="loader-screen">
+        <div class="spinner"></div>
+        Connexion à la base de données...
+    </div>
+
+    <!-- AUTH SCREEN -->
+    <div id="auth-screen">
+        <div class="auth-container">
+            <h2>FFME Training</h2>
+            <div class="auth-tabs">
+                <div class="auth-tab active" onclick="switchAuthTab('login')">Connexion</div>
+                <div class="auth-tab" onclick="switchAuthTab('register')">Inscription</div>
+            </div>
+            
+            <div id="form-login">
+                <div class="form-group">
+                    <label>Nom d'utilisateur</label>
+                    <input type="text" class="form-control" id="login-username" placeholder="Votre pseudo">
+                </div>
+                <button class="btn-primary" style="width:100%; margin-top: 1rem; padding: 0.85rem;" onclick="login()">Se connecter</button>
+            </div>
+            
+            <div id="form-register" style="display: none;">
+                <div class="form-group">
+                    <label>Nom d'utilisateur</label>
+                    <input type="text" class="form-control" id="reg-username" placeholder="Votre pseudo">
+                </div>
+                <div class="form-group">
+                    <label>Date de naissance</label>
+                    <input type="date" class="form-control" id="reg-dob" onchange="checkDobForParentCode()">
+                </div>
+                <div class="form-group">
+                    <label>Rôle</label>
+                    <select class="form-control" id="reg-role">
+                        <option value="athlete">Athlète</option>
+                        <option value="coach">Coach</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Club</label>
+                    <select class="form-control" id="reg-club" onchange="checkNewClubAuth(this)"></select>
+                </div>
+                <div class="form-group" id="reg-new-club-group" style="display:none;">
+                    <label>Nom du club</label>
+                    <input type="text" class="form-control" id="reg-new-club" placeholder="Ex: Club Alpin Français">
+                </div>
+                <div class="form-group" id="reg-parent-code-group" style="display:none; background: #F1F5F9; padding: 1rem; border-radius: var(--radius-md);">
+                    <label style="color: var(--ffme-blue);">Code Parent (Optionnel, pour lier un compte enfant)</label>
+                    <input type="text" class="form-control" id="reg-link-code" placeholder="Ex: 14675">
+                </div>
+                <button class="btn-primary" style="width:100%; margin-top: 1rem; padding: 0.85rem;" onclick="register()">Créer le compte</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP -->
+    <div id="app-content">
+        <header>
+            <div class="header-left">
+                <h1>FFME</h1>
+                <div class="user-info" onclick="toggleAccountMenu()">
+                    <span id="header-user-info-text">👤 Pseudo</span>
+                    <div id="account-dropdown" class="account-dropdown"></div>
+                </div>
+            </div>
+            <nav id="main-nav">
+                <!-- Coach Only Tabs -->
+                <button id="nav-coach-dashboard" class="coach-only" onclick="switchTab('coach-dashboard')">Séances & Blocs</button>
+                <button id="nav-coach-athletes" class="coach-only" onclick="switchTab('coach-athletes')">Mes Athlètes</button>
+                <button id="nav-coach-settings" class="coach-only" onclick="openCoachSettingsModal()">Paramètres</button>
+                
+                <!-- Athlete Tabs (Visible pour tout le monde) -->
+                <button id="nav-athlete-sessions" onclick="switchTab('athlete-sessions')">Mes Séances</button>
+                <button id="nav-athlete-profile" onclick="switchTab('athlete-profile')">Mon Profil</button>
+                
+                <button id="btn-logout" class="btn-outline" style="margin-left: auto;" onclick="logout()">Déconnexion</button>
+            </nav>
+        </header>
+
+        <!-- CHAT FLOAT BTN -->
+        <button class="chat-btn-float" onclick="toggleChat()">💬</button>
+        
+        <!-- CHAT PANEL -->
+        <div id="global-chat-panel" class="chat-panel">
+            <div class="chat-header">
+                <button id="chat-back-btn" class="chat-header-btn" style="display:none;" onclick="showChatList()">⬅</button>
+                <span id="chat-header-title" style="flex:1; text-align:center;">Messagerie</span>
+                <button class="chat-header-btn" onclick="toggleChatFullscreen()" title="Plein écran">⛶</button>
+                <button class="chat-header-btn" onclick="toggleChat()">✖</button>
+            </div>
+            
+            <div id="chat-view-list">
+                <h3 class="chat-section-title">Conversations récentes</h3>
+                <div id="chat-recent-list"></div>
+                <h3 class="chat-section-title">Annuaire du Club</h3>
+                <div id="chat-annuaire-list"></div>
+            </div>
+
+            <div id="chat-view-conversation">
+                <div id="chat-messages-container" class="chat-messages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chat-input-text" placeholder="Écrire un message..." onkeyup="if(event.key==='Enter') sendMessage()">
+                    <button onclick="sendMessage()">Envoyer</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- [COACH] DASHBOARD : BIBLIOTHÈQUES SÉANCES & BLOCS -->
+        <!-- ============================================== -->
+        <main id="coach-dashboard-space" class="tab-content">
+            
+            <div id="coach-notifications" class="notifications-panel" style="display: none;">
+                <h4 style="margin-top:0; margin-bottom:1rem; color: #D97706; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; font-weight: 800;">
+                    Activités & Alertes récentes
+                </h4>
+                <button class="btn-view-all-notifs" onclick="openModal('modal-all-notifications')">Voir tout l'historique</button>
+                <div id="notifications-list"></div>
+            </div>
+
+            <div class="flex-between">
+                <h2 class="section-title">Espace Entraînement</h2>
+                <div style="display: flex; gap: 0.75rem;">
+                    <button class="btn-outline" onclick="openCreateBlock()">+ Créer Bloc</button>
+                    <button class="btn-primary" onclick="openSessionBuilder()">+ Créer Séance</button>
+                </div>
+            </div>
+            <hr>
+            <div class="flex-between" style="margin-bottom: 1.5rem;">
+                <div class="internal-tabs" id="coach-session-tabs">
+                    <button class="active" id="tab-btn-perso" onclick="setSessionLibraryTab('personal')">Mes Séances (Privées)</button>
+                    <button id="tab-btn-club" onclick="setSessionLibraryTab('club')">Bibliothèque du Club</button>
+                </div>
+                <input type="text" id="search-sessions" class="search-bar" placeholder="Rechercher une séance..." onkeyup="updateCoachSessionSearch(this.value)">
+            </div>
+            <div id="coach-sessions-grid" class="grid" style="margin-bottom: 3.5rem;"></div>
+            <hr>
+            <div class="flex-between" style="margin-bottom: 1.5rem;">
+                <h3 class="section-title" style="font-size: 1.3rem;">Ressources : Exercices & Blocs</h3>
+                <input type="text" id="search-blocks" class="search-bar" placeholder="Rechercher un bloc..." onkeyup="updateCoachBlockSearch(this.value)">
+            </div>
+            <div id="coach-dashboard-filters" class="filter-tags"></div>
+            <div id="coach-blocks-grid" class="grid"></div>
+        </main>
+
+        <!-- ============================================== -->
+        <!-- [COACH] ATHLETES SUIVI & GROUPES -->
+        <!-- ============================================== -->
+        <main id="coach-athletes-space" class="tab-content">
+            <div class="flex-between" style="margin-bottom: 2rem;">
+                <h2 class="section-title">Suivi des Athlètes</h2>
+                <button class="btn-outline" onclick="openManageGroupsModal()">Gérer mes groupes</button>
+            </div>
+            
+            <div id="coach-groups-view" class="grid"></div>
+            
+            <div id="coach-athletes-view" style="display:none;">
+                <button class="btn-outline" style="margin-bottom: 1.5rem;" onclick="backToGroupsView()">⬅ Retour aux groupes</button>
+                <h3 id="current-group-title" style="margin-top:0; margin-bottom: 1.5rem; font-size:1.3rem; color:var(--ffme-blue-dark);"></h3>
+                <div id="coach-athletes-grid" class="grid"></div>
+            </div>
+        </main>
+
+        <!-- ============================================== -->
+        <!-- [ATHLETE] SESSIONS -->
+        <!-- ============================================== -->
+        <main id="athlete-sessions-space" class="tab-content">
+            <h2 class="section-title" style="margin-bottom: 2rem;">Mes Séances à réaliser</h2>
+            <div id="classic-sessions-grid" class="grid"></div>
+            <h2 class="section-title" style="margin-top: 4rem; margin-bottom: 1.5rem; color: var(--text-muted); border-bottom: 2px solid var(--border-color); padding-bottom: 1rem;">Historique des séances réalisées</h2>
+            <div id="done-sessions-grid" class="grid" style="opacity: 0.9;"></div>
+        </main>
+
+        <!-- ============================================== -->
+        <!-- [ATHLETE] PROFILE -->
+        <!-- ============================================== -->
+        <main id="athlete-profile-space" class="tab-content">
+            <h2 class="section-title" style="margin-bottom: 2rem;">Mon Profil</h2>
+            <div class="profile-header">
+                <div class="avatar-wrapper">
+                    <img id="profile-avatar-preview" src="" style="display:none;" />
+                    <span id="profile-avatar-placeholder">👤</span>
+                    <label for="profile-avatar-input" class="avatar-upload-btn">Modifier</label>
+                    <input type="file" id="profile-avatar-input" class="avatar-input" accept="image/*" onchange="handleAvatarUpload(event)">
+                </div>
+                <div style="flex: 1; width: 100%;">
+                    <h3 style="margin-bottom: 0.25rem; font-size: 1.3rem; color: var(--ffme-blue); font-weight: 800;" id="profile-display-name">Mon Profil</h3>
+                    <div id="profile-parent-code-display"></div>
+                    <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-top: 0.75rem; margin-bottom: 0.25rem; display: block;">Mes Objectifs</label>
+                    <textarea id="profile-objectives" class="form-control" style="min-height: 60px; margin-bottom: 0.75rem;"></textarea>
+                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                        <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="saveProfileObjectives()">Enregistrer</button>
+                        <button class="btn-outline" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="openLinkChildModal()" id="btn-link-child" style="display:none;">+ Lier un enfant</button>
+                    </div>
+                    <div id="profile-linked-children-list" style="margin-top: 1rem; font-size:0.85rem; display:flex; gap:0.5rem; flex-wrap:wrap;"></div>
+                </div>
+            </div>
+            
+            <div class="profile-section">
+                <h3>Mon Calendrier d'entraînement</h3>
+                <div id="athlete-calendar-container"></div>
+            </div>
+            
+            <div class="profile-section">
+                <div class="flex-between" style="margin-bottom: 1.5rem; border-bottom: 2px solid var(--bg-color); padding-bottom: 1rem;">
+                    <h3 style="margin:0; border:none; padding:0;">Toile des compétences</h3>
+                    <button class="btn-outline" onclick="openSkillsModal()">Mettre à jour mon profil</button>
+                </div>
+                <div class="charts-container">
+                    <div class="chart-box"><canvas id="chart-t1-athlete"></canvas></div>
+                    <div class="chart-box"><canvas id="chart-t2-athlete"></canvas></div>
+                </div>
+            </div>
+
+            <div class="profile-section">
+                <div class="flex-between" style="border-bottom: 2px solid var(--bg-color); padding-bottom: 1rem; margin-bottom:1rem;">
+                    <h3 style="margin:0; border:none; padding:0;">Historique des Compétitions</h3>
+                    <button class="btn-outline" onclick="openCompModal()">+ Ajouter Compétition</button>
+                </div>
+                <div id="athlete-competitions-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- MODALS -->
+    <!-- ============================================== -->
+    
+    <div id="modal-all-notifications" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header"><h2>Historique des Notifications</h2><button class="close-btn" onclick="closeModal('modal-all-notifications')">&times;</button></div>
+            <div id="all-notifications-list" style="max-height:60vh; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <div id="modal-manage-groups" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header"><h2>Gérer mes groupes</h2><button class="close-btn" onclick="closeModal('modal-manage-groups')">&times;</button></div>
+            <div class="form-group"><label>Nom du groupe</label><input type="text" id="new-group-name" class="form-control" placeholder="Ex: Groupe Compétition..."></div>
+            <label style="display:flex; align-items:center; gap:0.5rem; font-weight:600; font-size:0.9rem; margin-bottom:1rem; cursor:pointer;"><input type="checkbox" id="new-group-notify" style="width:1.2rem; height:1.2rem; accent-color:var(--ffme-blue);">🔔 Activer les alertes de suivi pour ce groupe</label>
+            <label style="font-weight:600; font-size:0.9rem; margin-bottom:0.5rem; display:block;">Sélectionner les athlètes :</label>
+            <div id="new-group-athletes" style="max-height: 200px; overflow-y:auto; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md); margin-bottom:1rem; border:1px solid var(--border-color);"></div>
+            <button id="btn-save-group" class="btn-primary" style="width:100%; margin-bottom: 2rem;" onclick="saveNewGroup()">Créer le groupe</button>
+            <h3 style="border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">Mes groupes existants</h3><div id="existing-groups-list"></div>
+        </div>
+    </div>
+
+    <div id="modal-link-child" class="modal-overlay"><div class="modal" style="max-width:400px;"><div class="modal-header"><h2>Lier un compte enfant</h2><button class="close-btn" onclick="closeModal('modal-link-child')">&times;</button></div><div class="form-group"><label>Code Parent :</label><input type="text" id="input-link-child" class="form-control" placeholder="Ex: 14675"></div><button class="btn-primary" style="width:100%" onclick="linkChildAccount()">Lier le compte</button></div></div>
+    <div id="modal-competition" class="modal-overlay"><div class="modal" style="max-width:400px;"><div class="modal-header"><h2>Ajouter une compétition</h2><button class="close-btn" onclick="closeModal('modal-competition')">&times;</button></div><div class="form-group"><label>Type</label><input type="text" id="comp-type" class="form-control"></div><div class="form-group"><label>Place</label><input type="text" id="comp-place" class="form-control"></div><div class="form-group"><label>Ressenti</label><textarea id="comp-feeling" class="form-control"></textarea></div><button class="btn-primary" style="width:100%" onclick="saveCompetition()">Ajouter</button></div></div>
+    <div id="modal-coach-settings" class="modal-overlay"><div class="modal" style="max-width:450px;"><div class="modal-header"><h2>Paramètres Coach</h2><button class="close-btn" onclick="closeModal('modal-coach-settings')">&times;</button></div><label style="display:flex; align-items:center; gap:0.75rem; font-weight:600; cursor:pointer;"><input type="checkbox" id="coach-setting-automessage" style="width:1.2rem; height:1.2rem; accent-color:var(--ffme-blue);"> Désactiver l'envoi auto du message d'alerte fatigue</label><button class="btn-primary" style="width:100%; margin-top:1.5rem;" onclick="saveCoachSettings()">Enregistrer</button></div></div>
+
+    <!-- MODALS CLASSIQUES : Blocs, Builder, etc. -->
+    <div id="modal-create-block" class="modal-overlay" style="z-index: 1010;"><div class="modal"><div class="modal-header"><h2 id="modal-block-title-text">Créer Bloc</h2><button class="close-btn" onclick="closeModal('modal-create-block')">&times;</button></div><div class="form-group"><label>Catégorie</label><select id="block-category" class="form-control" onchange="checkNewCategory(this)"></select></div><div class="form-group"><label>Titre de l'exercice</label><input type="text" id="block-title" class="form-control"></div><div class="form-group"><label>Description / Consignes</label><textarea id="block-desc" class="form-control"></textarea></div><button class="btn-primary" style="width:100%" onclick="saveBlock()">Enregistrer</button></div></div>
+    <div id="modal-new-category" class="modal-overlay" style="z-index: 1020;"><div class="modal" style="max-width: 400px;"><div class="modal-header"><h2>Nouvelle catégorie</h2><button class="close-btn" onclick="closeModal('modal-new-category')">&times;</button></div><input type="text" id="new-category-name" class="form-control" style="margin-bottom:1.5rem;"><button class="btn-primary" style="width: 100%" onclick="saveNewCategory()">Ajouter</button></div></div>
+    <div id="modal-create-session" class="modal-overlay"><div class="modal modal-builder"><div class="modal-header" style="margin-bottom: 0; padding: 1.5rem; background: var(--surface);"><h2 id="modal-session-title-text">Créer une Séance</h2><button class="close-btn" onclick="closeModal('modal-create-session')">&times;</button></div><div class="builder-container"><div class="builder-sidebar"><div class="flex-between"><h3>Ressources</h3><button class="btn-outline" onclick="openCreateBlock()">+ Bloc</button></div><div id="builder-filters" class="filter-tags" style="margin-top:1rem;"></div><div id="builder-blocks-list"></div></div><div class="builder-main"><h3>Structure (Glissez-déposez)</h3><div id="session-sequence" style="flex:1; overflow-y:auto; border: 2px dashed #CBD5E1; padding:1rem; margin-bottom:1.5rem; background:var(--bg-color); border-radius:var(--radius-md);"></div><div class="form-group"><input type="text" id="session-name" class="form-control" placeholder="Nom de la séance..."></div><button class="btn-primary" style="width:100%; padding: 1.1rem;" onclick="saveSession()">Enregistrer la séance</button></div></div></div></div>
+
+    <!-- MODAL : Attribuer avec Groupes -->
+    <div id="modal-assign-session" class="modal-overlay"><div class="modal" style="max-width: 550px;"><div class="modal-header"><h2>Attribuer</h2><button class="close-btn" onclick="closeModal('modal-assign-session')">&times;</button></div><div id="assign-groups-container" style="margin-bottom: 1.5rem;"></div><h3 style="border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">Tous les membres</h3><button class="btn-outline" style="width:100%; margin-bottom:1rem; font-size:0.85rem;" onclick="selectAllAthletes()">☑️ Cocher tout</button><div id="athlete-checklist" style="max-height: 250px; overflow-y: auto; background: var(--bg-color); padding: 1rem; border-radius:var(--radius-md); border:1px solid var(--border-color); margin-bottom:1.5rem;"></div><button class="btn-primary" style="width:100%; padding: 1rem;" onclick="saveAssignments()">Valider l'attribution</button></div></div>
+
+    <!-- MODAL : Vue Séance -->
+    <div id="modal-view-session" class="modal-overlay" style="z-index: 1060;">
+        <div class="modal modal-large" style="background:var(--bg-color); padding: 1rem;">
+            <div class="modal-header" style="background:var(--surface); padding:1.5rem; border-radius:var(--radius-md); margin-bottom: 1rem; border: none;">
+                <h2 id="view-session-title" style="margin:0; font-size: 1.6rem; color: var(--ffme-blue-dark);"></h2>
+                <button class="close-btn" onclick="closeModal('modal-view-session')">&times;</button>
+            </div>
+
+            <!-- BLOC ATHLETE FORM -->
+            <div id="view-session-athlete-form">
+                <div class="profile-section" style="padding: 1rem; border:none; margin-bottom:1rem;">
+                    <button class="btn-outline" style="width:100%;" onclick="document.getElementById('chrono-container').style.display='block'; this.style.display='none';">⏱️ Afficher le Chronomètre</button>
+                    <div id="chrono-container" class="timer-panel">
+                        <div class="timer-inputs">
+                            <div style="display:flex; flex-direction:column; align-items:center;"><label>Travail (s)</label><input type="number" id="timer-work" value="10"></div>
+                            <div style="display:flex; flex-direction:column; align-items:center;"><label>Repos (s)</label><input type="number" id="timer-rest" value="20"></div>
+                            <div style="display:flex; flex-direction:column; align-items:center;"><label>Séries</label><input type="number" id="timer-rounds" value="5"></div>
+                        </div>
+                        <div id="timer-display" class="timer-display">00:00</div>
+                        <div style="display:flex; gap:0.75rem; justify-content:center;">
+                            <button class="btn-primary" style="background:white; color:var(--text-dark);" onclick="startTimer()">Start</button>
+                            <button class="btn-outline" style="color:white; border-color:white;" onclick="pauseTimer()">Pause</button>
+                            <button class="btn-outline" style="color:white; border-color:transparent;" onclick="resetTimer()">Reset</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="view-session-content-athlete" style="max-height:45vh; overflow-y:auto; padding-right: 0.5rem; margin-bottom:1rem;"></div>
+                
+                <div style="background:var(--surface); padding:2rem; border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
+                    <h3 style="margin-top:0; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">Bilan global de fin de séance</h3>
+                    <label>Plaisir (1 = Aucun, 10 = Max) : <b id="val-plaisir">5</b></label>
+                    <input type="range" id="session-plaisir" class="rpe-slider" min="1" max="10" value="5" oninput="document.getElementById('val-plaisir').textContent=this.value">
+                    <label style="margin-top:1rem; display:block;">Difficulté globale ressentie (1 = Très facile, 10 = Extrême) : <b id="val-diff">5</b></label>
+                    <input type="range" id="session-difficulte" class="rpe-slider" min="1" max="10" value="5" oninput="document.getElementById('val-diff').textContent=this.value">
+                    <label style="margin-top:1rem; display:block;">État de fatigue (1 = Frais, 10 = Épuisé) : <b id="val-fatigue">5</b></label>
+                    <input type="range" id="session-fatigue" class="rpe-slider" min="1" max="10" value="5" oninput="document.getElementById('val-fatigue').textContent=this.value">
+                    <label style="font-weight:800; display:block; margin-top:2rem; margin-bottom:0.75rem;">Note / Lien vidéo :</label>
+                    <textarea id="session-annotation" class="form-control" placeholder="Comment t'es-tu senti ?..."></textarea>
+                    <button id="btn-validate-session" class="btn-secondary" style="width:100%; margin-top:2rem; padding: 1.1rem; font-size:1.1rem;">✓ Valider ma séance</button>
+                </div>
+            </div>
+
+            <!-- BLOC COACH READONLY -->
+            <div id="view-session-coach-readonly" style="display:none;">
+                <div id="view-session-content-coach" style="max-height:45vh; overflow-y:auto; padding-right: 0.5rem; margin-bottom:1rem;"></div>
+                
+                <div style="background:var(--surface); padding:2rem; border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
+                    <h3 style="margin-top:0; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">Bilan de l'athlète</h3>
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; margin-bottom:1.5rem; text-align:center;">
+                        <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);">
+                            <div style="font-size:0.8rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Plaisir</div>
+                            <div style="font-size:1.5rem; font-weight:800; color:var(--ffme-blue);" id="ro-val-plaisir">-</div>
+                        </div>
+                        <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);">
+                            <div style="font-size:0.8rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Difficulté</div>
+                            <div style="font-size:1.5rem; font-weight:800; color:#F59E0B;" id="ro-val-diff">-</div>
+                        </div>
+                        <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);">
+                            <div style="font-size:0.8rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Fatigue</div>
+                            <div style="font-size:1.5rem; font-weight:800; color:var(--ffme-red);" id="ro-val-fatigue">-</div>
+                        </div>
+                    </div>
+                    <label style="font-weight:800; display:block; margin-bottom:0.5rem;">Note / Lien vidéo :</label>
+                    <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md); font-size:0.95rem; white-space:pre-wrap; min-height:60px;" id="ro-val-note"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    
+    <!-- MODAL : VUE COACH SUR ATHLETE -->
+    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div></div><div id="coach-ath-view-historique" style="display:none;"><div id="coach-ath-history-list" class="grid"></div></div></div></div>
+
+    <!-- Modals Skills & Calendar -->
+    <div id="modal-skills" class="modal-overlay" style="z-index:1050;"><div class="modal modal-large"><div class="modal-header"><h2 style="font-size:1.5rem;">Auto-évaluation (0 à 10)</h2><button class="close-btn" onclick="closeModal('modal-skills')">&times;</button></div><div style="display: flex; gap: 2rem; flex-wrap:wrap;"><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-blue); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Technique & Gestuelle</h3><div id="skills-form-t1" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-red); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Physique & Mental</h3><div id="skills-form-t2" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div></div><button class="btn-primary" style="width:100%; margin-top:2rem; padding:1.25rem; font-size:1.15rem;" onclick="saveSkills()">Enregistrer</button></div></div>
+    <div id="modal-calendar-note" class="modal-overlay" style="z-index: 1050;"><div class="modal" style="max-width: 480px;"><div class="modal-header"><h3 id="cal-note-date" style="margin:0; font-size: 1.35rem; color:var(--ffme-blue-dark);">Date</h3><button class="close-btn" onclick="closeModal('modal-calendar-note')">&times;</button></div><div class="form-group"><label>Statut pour ce jour :</label><select id="cal-note-status" class="form-control"><option value="false">Repos</option><option value="true">Entraînement</option></select></div><div class="form-group"><label>Lier à une séance :</label><select id="cal-note-session" class="form-control"></select></div><div class="form-group"><label>Note libre :</label><input type="text" id="cal-note-text" class="form-control"></div><button class="btn-primary" style="width:100%; margin-top:1rem; padding:1rem;" onclick="saveCalendarNote()">Valider</button></div></div>
+
+    <!-- ============================================== -->
+    <!-- JAVASCRIPT LOGIC -->
+    <!-- ============================================== -->
+    <script>
+        // CONFIGURATION FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyDBRZEZR75WZz4tC0TU0uuc0pDag2r59-Y",
+            authDomain: "ffme-plateforme-entrainement.firebaseapp.com",
+            projectId: "ffme-plateforme-entrainement",
+            storageBucket: "ffme-plateforme-entrainement.firebasestorage.app",
+            messagingSenderId: "370389306607",
+            appId: "1:370389306607:web:7928e1a19d7db824235f1a"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Référence au document cloud unique qui stockera toute l'application
+        const cloudDbRef = db.collection('application_state').doc('global_database');
+
+        const defaultCategories = ['Échauffement', 'Physique', 'Volume', 'Rési', 'Force', 'Lecture', 'Mental', 'Débrief'];
+        const themes1 = ["Dynamiques", "Statiques", "Talon", "Contre-Pointe", "Equilibre", "Gestes en dévers", "Opposition", "Compression", "Bacs", "Réglettes", "Pinces", "Bi-doigt"];
+        const themes2 = ["Force bras", "Force doigts", "Endurance Phys.", "Souplesse", "Position pieds", "Position corps", "Coordination", "Gestion mentale", "Lecture", "En tête", "Endu. mentale"];
+        
+        let appData = { users: [], clubs: [] };
+        
+        let currentUser = null; 
+        let originalParentUser = null; 
+        let chartInstances = {}; 
+        
+        let currentMonth = new Date().getMonth(); let currentYear = new Date().getFullYear();
+        let selectedDateForNote = null; let selectedUserIdForCalendar = null;
+        let editingBlockId = null; let editingSessionId = null; let builderBlocks = [];
+        let currentSessionFilter = 'Toutes'; let coachBlockSearch = ''; let coachSessionSearch = ''; 
+        let coachBlockFilter = 'Toutes'; let currentSessionLibraryTab = 'personal'; 
+        let activeChatUserId = null; let editingGroupId = null;
+
+        function getEmptyProfile() {
+            let p = { objectives: '', avatar: null, skillsT1: {}, skillsT2: {}, calendar: {}, competitions: [], settings: { autoMessageDisabled: false }, groups: [] };
+            themes1.forEach(t => p.skillsT1[t] = 0); themes2.forEach(t => p.skillsT2[t] = 0);
+            return p;
+        }
+
+        // CHARGEMENT INITIAL FIREBASE
+        async function loadFirebaseData() {
+            try {
+                const docSnap = await cloudDbRef.get();
+                if (docSnap.exists) {
+                    appData = docSnap.data();
+                    if (!appData.users) appData.users = [];
+                    if (!appData.clubs) appData.clubs = [];
+                } else {
+                    await cloudDbRef.set(appData); // Création à vide la première fois
+                }
+
+                // Vérifications de structure (migration logic)
+                appData.clubs.forEach(c => { 
+                    if(!c.notifications) c.notifications = []; 
+                    if(!c.messages) c.messages = [];
+                    if(!c.categories.includes('Débrief')) c.categories.push('Débrief');
+                });
+                appData.users.forEach(u => {
+                    if(!u.linkedChildren) u.linkedChildren = [];
+                    if(!u.profile.competitions) u.profile.competitions = [];
+                    if(!u.profile.settings) u.profile.settings = { autoMessageDisabled: false };
+                    if(u.role === 'coach' && !u.profile.groups) u.profile.groups = [];
+                });
+
+                // Cacher l'écran de chargement
+                document.getElementById('loader-screen').style.display = 'none';
+                
+                // Lancer l'app
+                initAuth();
+
+            } catch (error) {
+                console.error("Erreur de chargement Firebase:", error);
+                document.getElementById('loader-screen').innerHTML = "<span style='color:red;'>Erreur de connexion à Firebase. Vérifiez votre configuration ou les règles de sécurité Firestore.</span>";
+            }
+        }
+
+        // NOUVELLE SAUVEGARDE EN CLOUD
+        function saveData() {
+            // Sauvegarde dans le cloud sans bloquer l'écran
+            cloudDbRef.set(appData).catch(e => console.error("Erreur de sauvegarde:", e));
+        }
+
+        function getMyClub() { return appData.clubs.find(c => c.id === currentUser.clubId); }
+
+        // --- AUTH ---
+        function initAuth() {
+            // On vérifie le navigateur pour savoir s'il y a un compte resté connecté
+            const savedId = localStorage.getItem('ffmeCurrentSessionId');
+            if (savedId) {
+                currentUser = appData.users.find(u => u.id === savedId);
+                if (currentUser) return showApp();
+            }
+            document.getElementById('app-content').style.display = 'none';
+            document.getElementById('auth-screen').style.display = 'flex';
+            const select = document.getElementById('reg-club');
+            select.innerHTML = '<option value="">-- Choisir un club --</option>';
+            appData.clubs.forEach(c => select.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+            select.innerHTML += `<option value="_new_" style="font-weight:700; color:var(--ffme-blue-dark);">➕ Créer un nouveau club...</option>`;
+        }
+        
+        function logout() { currentUser = null; originalParentUser = null; localStorage.removeItem('ffmeCurrentSessionId'); initAuth(); }
+        
+        function switchAuthTab(tab) {
+            document.querySelectorAll('.auth-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById('form-login').style.display = tab === 'login' ? 'block' : 'none';
+            document.getElementById('form-register').style.display = tab === 'register' ? 'block' : 'none';
+            document.querySelector('.auth-tabs').children[tab==='login'?0:1].classList.add('active');
+        }
+        function checkNewClubAuth(s) { document.getElementById('reg-new-club-group').style.display = s.value === '_new_' ? 'block' : 'none'; }
+        function checkDobForParentCode() {
+            const dobStr = document.getElementById('reg-dob').value; if(!dobStr) return;
+            const age = (new Date() - new Date(dobStr)) / (1000*60*60*24*365.25);
+            document.getElementById('reg-parent-code-group').style.display = age >= 18 ? 'block' : 'none';
+        }
+
+        function register() {
+            const username = document.getElementById('reg-username').value.trim(); const dob = document.getElementById('reg-dob').value; const role = document.getElementById('reg-role').value; let clubId = document.getElementById('reg-club').value;
+            if (!username || !dob) return alert("Pseudo et Date de naissance requis.");
+            if (appData.users.find(u => u.username.toLowerCase() === username.toLowerCase())) return alert("Pseudo déjà pris.");
+            
+            if (clubId === '_new_') {
+                const newClubName = document.getElementById('reg-new-club').value.trim();
+                if (!newClubName) return alert("Nom du club requis.");
+                clubId = 'club_' + Date.now();
+                appData.clubs.push({ id: clubId, name: newClubName, categories: [...defaultCategories], blocks: [], sessions: [], assignments: [], notifications: [], messages: [] });
+            } else if (!clubId) return alert("Sélectionnez un club.");
+
+            const age = (new Date() - new Date(dob)) / (1000*60*60*24*365.25);
+            const parentCode = age < 18 ? Math.floor(10000 + Math.random() * 90000).toString() : null;
+
+            const newUser = { id: 'user_' + Date.now(), username, role, clubId, dob, parentCode, linkedChildren: [], profile: getEmptyProfile() };
+            appData.users.push(newUser);
+
+            if(age >= 18) {
+                const code = document.getElementById('reg-link-code').value.trim();
+                if(code) {
+                    const child = appData.users.find(u => u.parentCode === code);
+                    if(child && !newUser.linkedChildren.includes(child.id)) { newUser.linkedChildren.push(child.id); }
+                }
+            }
+            saveData(); loginUser(newUser);
+        }
+        
+        function login() {
+            const username = document.getElementById('login-username').value.trim();
+            const user = appData.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+            if (user) loginUser(user); else alert("Utilisateur introuvable.");
+        }
+        function loginUser(user, isSwitch = false) {
+            if(!isSwitch) originalParentUser = null; 
+            currentUser = user; 
+            // On sauvegarde localement qui est connecté
+            localStorage.setItem('ffmeCurrentSessionId', user.id); 
+            showApp();
+        }
+
+        // BASCULE COMPTE
+        function toggleAccountMenu() {
+            const dd = document.getElementById('account-dropdown'); const realUser = originalParentUser || currentUser;
+            if(realUser.linkedChildren.length === 0 && !originalParentUser) return;
+            if(dd.style.display === 'block') { dd.style.display = 'none'; return; }
+            let html = '';
+            if(originalParentUser) html += `<button onclick="switchAccount('${originalParentUser.id}')">↩ Retour Parent (${originalParentUser.username})</button>`;
+            realUser.linkedChildren.forEach(cId => {
+                const c = appData.users.find(u=>u.id===cId);
+                if(c && c.id !== currentUser.id) html += `<button onclick="switchAccount('${c.id}')">👶 Basculer vers ${c.username}</button>`;
+            });
+            dd.innerHTML = html; dd.style.display = 'block';
+        }
+        function switchAccount(targetId) {
+            const target = appData.users.find(u=>u.id===targetId);
+            if(!originalParentUser) originalParentUser = currentUser; 
+            if(targetId === originalParentUser.id) originalParentUser = null; 
+            document.getElementById('account-dropdown').style.display = 'none'; loginUser(target, true);
+        }
+        function openLinkChildModal() { document.getElementById('input-link-child').value = ''; openModal('modal-link-child'); }
+        function linkChildAccount() {
+            const code = document.getElementById('input-link-child').value.trim();
+            const child = appData.users.find(u => u.parentCode === code);
+            if(child) {
+                if(!currentUser.linkedChildren.includes(child.id)) currentUser.linkedChildren.push(child.id);
+                saveData(); alert("Compte lié !"); closeModal('modal-link-child'); showApp();
+            } else alert("Code invalide.");
+        }
+
+        // --- NAVIGATION ---
+        function showApp() {
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('app-content').style.display = 'block';
+            
+            let userText = `👤 ${currentUser.username} <span style="opacity:0.7; font-size:0.8rem; margin-left:4px;">(${currentUser.role})</span>`;
+            if(originalParentUser) userText += ` <span style="font-size:0.75rem; background:var(--ffme-red); color:white; padding:2px 6px; border-radius:4px; margin-left:8px;">Vue Enfant</span>`;
+            document.getElementById('header-user-info-text').innerHTML = userText;
+            
+            const coachTabs = document.querySelectorAll('.coach-only');
+            if (currentUser.role === 'coach') {
+                coachTabs.forEach(el => el.style.display = 'inline-block');
+                switchTab('coach-dashboard');
+                updateCategorySelect();
+            } else {
+                coachTabs.forEach(el => el.style.display = 'none');
+                switchTab('athlete-sessions');
+            }
+            const age = (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25);
+            const btnLink = document.getElementById('btn-link-child');
+            if(btnLink) btnLink.style.display = age >= 18 ? 'inline-block' : 'none';
+        }
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab + '-space').classList.add('active');
+            const navBtn = document.getElementById('nav-' + tab); if(navBtn) navBtn.classList.add('active');
+
+            if (tab === 'coach-dashboard') renderCoachDashboard();
+            if (tab === 'coach-athletes') renderCoachAthletes();
+            if (tab === 'athlete-sessions') renderAthleteSessions();
+            if (tab === 'athlete-profile') renderAthleteProfile();
+        }
+        function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        // --- NOTIFICATIONS COACH ---
+        function pushNotification(text) {
+            const club = getMyClub();
+            const date = new Date().toLocaleDateString('fr-FR', { hour: '2-digit', minute:'2-digit' });
+            club.notifications.unshift({ id: Date.now(), text, date });
+            saveData();
+        }
+        function renderNotifications() {
+            const club = getMyClub();
+            const panel = document.getElementById('coach-notifications');
+            const list = document.getElementById('notifications-list');
+            const allList = document.getElementById('all-notifications-list');
+            
+            if(club.notifications && club.notifications.length > 0) {
+                panel.style.display = 'block';
+                list.innerHTML = club.notifications.slice(0, 3).map(n => `<div class="notif-item"><span class="notif-date">${n.date}</span> <span>${n.text}</span></div>`).join('');
+                allList.innerHTML = club.notifications.map(n => `<div class="notif-item"><span class="notif-date">${n.date}</span> <span>${n.text}</span></div>`).join('');
+            } else {
+                panel.style.display = 'none';
+                allList.innerHTML = "<p>Aucune notification.</p>";
+            }
+        }
+
+        // --- COACH : DASHBOARD / BUILDER ---
+        function updateCategorySelect() {
+            const select = document.getElementById('block-category');
+            select.innerHTML = ''; getMyClub().categories.forEach(cat => select.innerHTML += `<option value="${cat}">${cat}</option>`);
+            select.innerHTML += `<option value="_new_" style="font-weight:700; color:var(--ffme-blue);">+ Nouvelle catégorie...</option>`;
+        }
+        function checkNewCategory(s) { if(s.value === '_new_') { openModal('modal-new-category'); document.getElementById('new-category-name').value=''; } }
+        function saveNewCategory() {
+            const c = document.getElementById('new-category-name').value.trim();
+            if(c && !getMyClub().categories.includes(c)) {
+                getMyClub().categories.push(c); saveData(); updateCategorySelect();
+                document.getElementById('block-category').value = c; closeModal('modal-new-category'); renderCoachDashboard();
+            }
+        }
+        
+        function openCreateBlock() { editingBlockId = null; document.getElementById('modal-block-title-text').textContent = "Créer un Bloc"; document.getElementById('block-title').value = ''; document.getElementById('block-desc').value = ''; openModal('modal-create-block'); }
+        function openEditBlock(id) {
+            editingBlockId = id; const b = getMyClub().blocks.find(x => x.id === id);
+            document.getElementById('modal-block-title-text').textContent = "Modifier le Bloc";
+            document.getElementById('block-category').value = b.category; document.getElementById('block-title').value = b.title; document.getElementById('block-desc').value = b.description;
+            openModal('modal-create-block');
+        }
+        function deleteBlock(id) {
+            if(!confirm("Êtes-vous sûr de vouloir supprimer ce bloc définitivement ?")) return;
+            const club = getMyClub();
+            club.blocks = club.blocks.filter(b => b.id !== id);
+            club.sessions.forEach(s => { s.blocks = s.blocks.filter(bId => bId !== id); });
+            saveData(); renderCoachDashboard();
+        }
+
+        function saveBlock() {
+            const title = document.getElementById('block-title').value.trim(); const desc = document.getElementById('block-desc').value.trim(); const cat = document.getElementById('block-category').value;
+            if (!title || cat === '_new_') return alert("Veuillez remplir le titre et la catégorie.");
+            if (editingBlockId) { const b = getMyClub().blocks.find(x => x.id === editingBlockId); b.title = title; b.category = cat; b.description = desc; } 
+            else { getMyClub().blocks.push({ id: 'blk_' + Date.now(), title, category: cat, description: desc }); }
+            saveData(); closeModal('modal-create-block'); renderCoachDashboard();
+            if (document.getElementById('modal-create-session').style.display === 'flex') updateBuilderBlocksList();
+        }
+
+        // BUILDER
+        function openSessionBuilder() { editingSessionId = null; builderBlocks = []; currentSessionFilter = 'Toutes'; document.getElementById('modal-session-title-text').textContent = "Créer une Séance"; document.getElementById('session-name').value = ''; buildFilters(); updateBuilderBlocksList(); updateBuilderSeq(); openModal('modal-create-session'); }
+        function buildFilters() { document.getElementById('builder-filters').innerHTML = `<span class="filter-tag ${currentSessionFilter==='Toutes'?'active':''}" onclick="setBuilderFilter('Toutes')">Toutes</span>` + getMyClub().categories.map(cat => `<span class="filter-tag ${currentSessionFilter===cat?'active':''}" onclick="setBuilderFilter('${cat}')">${cat}</span>`).join(''); }
+        function setBuilderFilter(cat) { currentSessionFilter = cat; buildFilters(); updateBuilderBlocksList(); }
+        function updateBuilderBlocksList() {
+            const club = getMyClub();
+            const filtered = currentSessionFilter === 'Toutes' ? club.blocks : club.blocks.filter(b => b.category === currentSessionFilter);
+            document.getElementById('builder-blocks-list').innerHTML = filtered.map(b => `<div style="background:var(--surface); border:1px solid var(--border-color); padding:1rem; border-radius:var(--radius-md); cursor:pointer;" onclick="addBlockToBuilder('${b.id}')"><div style="font-size:0.75rem; color:var(--ffme-blue); font-weight:800; text-transform:uppercase;">${b.category}</div><div style="font-weight:700;">${b.title}</div></div>`).join('');
+        }
+        function addBlockToBuilder(id) { builderBlocks.push(id); updateBuilderSeq(); }
+        function removeBlockFromBuilder(index) { builderBlocks.splice(index, 1); updateBuilderSeq(); }
+        
+        let dragSrcIndex = null;
+        function dragStart(e, i) { dragSrcIndex = i; e.dataTransfer.effectAllowed = 'move'; }
+        function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; return false; }
+        function dropBlock(e, targetIndex) { e.stopPropagation(); if (dragSrcIndex !== targetIndex && dragSrcIndex !== null) { const moved = builderBlocks.splice(dragSrcIndex, 1)[0]; builderBlocks.splice(targetIndex, 0, moved); updateBuilderSeq(); } return false; }
+
+        function updateBuilderSeq() {
+            const club = getMyClub();
+            document.getElementById('session-sequence').innerHTML = builderBlocks.map((id, i) => {
+                const b = club.blocks.find(x=>x.id===id); if(!b) return '';
+                return `<div class="draggable-item" draggable="true" ondragstart="dragStart(event, ${i})" ondragover="dragOver(event)" ondrop="dropBlock(event, ${i})"><span><b style="color:var(--text-muted); margin-right:8px;">☰</b> ${i+1}. ${b.title}</span><button class="btn-icon" onclick="removeBlockFromBuilder(${i})">✖</button></div>`;
+            }).join('');
+        }
+        function saveSession() {
+            const name = document.getElementById('session-name').value.trim();
+            if(!name || builderBlocks.length===0) return;
+            if(editingSessionId) { const s = getMyClub().sessions.find(x => x.id === editingSessionId); s.name = name; s.blocks = [...builderBlocks]; } 
+            else { getMyClub().sessions.push({ id: 'sess_' + Date.now(), name, blocks: builderBlocks, authorId: currentUser.id, isShared: false }); }
+            saveData(); closeModal('modal-create-session'); setSessionLibraryTab('personal');
+        }
+
+        function duplicateSession(id) {
+            const club = getMyClub(); const s = club.sessions.find(x => x.id === id);
+            club.sessions.push({ id: 'sess_' + Date.now(), name: s.name + " (Copie)", blocks: [...s.blocks], authorId: currentUser.id, isShared: false });
+            saveData(); setSessionLibraryTab('personal'); 
+        }
+        function deleteSession(id) {
+            if(!confirm("Supprimer cette séance ?")) return;
+            const club = getMyClub(); club.sessions = club.sessions.filter(s => s.id !== id);
+            saveData(); renderCoachDashboard();
+        }
+        function openEditSession(id) {
+            editingSessionId = id; const s = getMyClub().sessions.find(x => x.id === id);
+            document.getElementById('modal-session-title-text').textContent = "Modifier la Séance"; document.getElementById('session-name').value = s.name;
+            builderBlocks = [...s.blocks]; currentSessionFilter = 'Toutes';
+            buildFilters(); updateBuilderBlocksList(); updateBuilderSeq(); openModal('modal-create-session');
+        }
+
+        // COACH DASHBOARD UI
+        function setCoachBlockFilter(cat) { coachBlockFilter = cat; renderCoachDashboard(); }
+        function updateCoachBlockSearch(val) { coachBlockSearch = val; renderCoachDashboard(); }
+        function updateCoachSessionSearch(val) { coachSessionSearch = val; renderCoachDashboard(); }
+        function setSessionLibraryTab(tab) { currentSessionLibraryTab = tab; document.getElementById('tab-btn-perso').classList.toggle('active', tab === 'personal'); document.getElementById('tab-btn-club').classList.toggle('active', tab === 'club'); renderCoachDashboard(); }
+
+        function renderCoachDashboard() {
+            renderNotifications();
+            const club = getMyClub();
+            document.getElementById('coach-dashboard-filters').innerHTML = `<span class="filter-tag ${coachBlockFilter==='Toutes'?'active':''}" onclick="setCoachBlockFilter('Toutes')">Toutes</span>` + club.categories.map(cat => `<span class="filter-tag ${coachBlockFilter===cat?'active':''}" onclick="setCoachBlockFilter('${cat}')">${cat}</span>`).join('');
+            let fBlocks = coachBlockFilter === 'Toutes' ? club.blocks : club.blocks.filter(b => b.category === coachBlockFilter);
+            if (coachBlockSearch) fBlocks = fBlocks.filter(b => b.title.toLowerCase().includes(coachBlockSearch.toLowerCase()));
+            document.getElementById('coach-blocks-grid').innerHTML = fBlocks.map(b => `<div class="card"><div class="card-header"><span class="card-category">${b.category}</span><div style="display:flex;gap:0.25rem;"><button class="btn-icon" style="padding:0;" onclick="openEditBlock('${b.id}')">✏️</button><button class="btn-icon" style="padding:0; color:var(--ffme-red);" onclick="deleteBlock('${b.id}')">🗑️</button></div></div><div class="card-title">${b.title}</div><p style="font-size:0.95rem; color:var(--text-muted);">${b.description}</p></div>`).join('');
+            
+            let tSessions = currentSessionLibraryTab === 'personal' ? club.sessions.filter(s => s.authorId === currentUser.id && !s.isShared) : club.sessions.filter(s => s.isShared);
+            if (coachSessionSearch) tSessions = tSessions.filter(s => s.name.toLowerCase().includes(coachSessionSearch.toLowerCase()));
+            document.getElementById('coach-sessions-grid').innerHTML = tSessions.map(s => {
+                let shareBtn = currentSessionLibraryTab === 'personal' ? `<button class="btn-outline" style="width:100%; margin-bottom:1rem;" onclick="publishToClub('${s.id}')">Partager au Club</button>` : '';
+                let actions = `<button class="btn-icon" title="Dupliquer" onclick="duplicateSession('${s.id}')">📋</button>`;
+                if(s.authorId === currentUser.id || !s.authorId) {
+                    actions += ` <button class="btn-icon" title="Modifier" onclick="openEditSession('${s.id}')">✏️</button> <button class="btn-icon" style="color:var(--ffme-red);" title="Supprimer" onclick="deleteSession('${s.id}')">🗑️</button>`;
+                }
+
+                // Attribution Badges (Only Pending)
+                const pendingAssigns = club.assignments.filter(a => a.sessionId === s.id && !a.isDone);
+                let assignedHtml = '';
+                if(pendingAssigns.length > 0) {
+                    const names = pendingAssigns.map(a => { const u = appData.users.find(x=>x.id===a.athleteId); return u ? u.username : ''; }).filter(Boolean).join(', ');
+                    assignedHtml = `<div style="font-size:0.8rem; color:var(--ffme-blue-dark); background:#EFF6FF; padding:0.5rem 0.8rem; border-radius:var(--radius-md); margin-bottom:1rem; font-weight:600; border:1px solid #BFDBFE;">En cours par : ${names}</div>`;
+                }
+
+                return `<div class="card">
+                            <div class="card-header" style="align-items:flex-start;">
+                                <div class="card-title" style="flex:1;">${s.name}</div>
+                                <div style="display:flex; gap:0.25rem;">${actions}</div>
+                            </div>
+                            <p style="font-size:0.95rem; color:var(--text-muted); font-weight:600; margin-bottom:1.5rem; margin-top:0;">🧗 ${s.blocks.length} exercices</p>
+                            ${assignedHtml}
+                            ${shareBtn}
+                            <button class="btn-primary" style="width:100%; margin-top:auto;" onclick="openAssignModal('${s.id}')">👥 Attribuer</button>
+                        </div>`;
+            }).join('');
+        }
+        function publishToClub(id) { const club = getMyClub(); const s = club.sessions.find(x => x.id === id); club.sessions.push({ id: 'sess_' + Date.now(), name: s.name, blocks: [...s.blocks], authorId: currentUser.id, isShared: true }); saveData(); setSessionLibraryTab('club'); }
+        
+        // --- ATTRIBUTION AVEC GROUPES ---
+        let sessionToAssignId = null;
+        function openAssignModal(sessId) {
+            sessionToAssignId = sessId; const club = getMyClub(); 
+            const athletes = appData.users.filter(u => u.clubId === club.id && u.role === 'athlete');
+            const pendingExist = club.assignments.filter(a => a.sessionId === sessId && !a.isDone);
+            
+            const grpContainer = document.getElementById('assign-groups-container');
+            grpContainer.innerHTML = '';
+            if(currentUser.profile.groups && currentUser.profile.groups.length > 0) {
+                let html = `<h3 style="border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">Groupes</h3>`;
+                currentUser.profile.groups.forEach(g => {
+                    html += `
+                    <div style="background:var(--surface); border:1px solid var(--border-color); border-radius:var(--radius-md); margin-bottom:0.75rem; padding:1rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                            <strong style="font-size:1.1rem; color:var(--ffme-blue);">${g.name}</strong>
+                            <button class="btn-outline" style="font-size:0.75rem; padding:0.3rem 0.6rem;" onclick="checkGroupAthletes('${g.id}')">Tout cocher</button>
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;" class="group-checkboxes-${g.id}">
+                            ${g.athletes.map(aId => {
+                                const ath = appData.users.find(u=>u.id===aId); if(!ath) return '';
+                                return `<label style="font-size:0.85rem;"><input type="checkbox" class="athlete-checkbox" value="${ath.id}" ${pendingExist.some(ex => ex.athleteId === ath.id)?'disabled checked':''}> ${ath.username}</label>`;
+                            }).join('')}
+                        </div>
+                    </div>`;
+                });
+                grpContainer.innerHTML = html;
+            }
+
+            document.getElementById('athlete-checklist').innerHTML = athletes.map(a => `<label style="display:flex; gap:1rem; padding:0.5rem; background:var(--surface); border:1px solid var(--border-color); border-radius:var(--radius-md); margin-bottom:0.5rem; cursor:pointer;"><input type="checkbox" class="athlete-checkbox" value="${a.id}" ${pendingExist.some(ex => ex.athleteId === a.id)?'disabled checked':''}> ${a.username}</label>`).join('');
+            openModal('modal-assign-session');
+        }
+
+        function checkGroupAthletes(gId) { document.querySelectorAll(`.group-checkboxes-${gId} input:not(:disabled)`).forEach(cb => cb.checked = true); }
+        function selectAllAthletes() { document.querySelectorAll('#athlete-checklist input:not(:disabled)').forEach(cb => cb.checked = true); }
+        
+        function saveAssignments() { 
+            let selectedIds = new Set();
+            document.querySelectorAll('.athlete-checkbox:checked:not(:disabled)').forEach(cb => selectedIds.add(cb.value));
+            selectedIds.forEach(id => { 
+                getMyClub().assignments.push({ id: 'ass_' + Date.now() + Math.random(), sessionId: sessionToAssignId, athleteId: id, assignerId: currentUser.id, isDone: false, annotation: '', blockRpes: {}, avgRpe: null, plaisir: null, difficulte: null, fatigue: null, doneAt: null }); 
+            }); 
+            saveData(); closeModal('modal-assign-session'); renderCoachDashboard(); 
+        }
+
+        // --- GESTION DES GROUPES (COACH) ---
+        function openManageGroupsModal() {
+            editingGroupId = null;
+            renderManageGroupsList();
+            const athletes = appData.users.filter(u => u.clubId === currentUser.clubId && u.role === 'athlete');
+            document.getElementById('new-group-athletes').innerHTML = athletes.map(a => `<label style="display:flex; gap:1rem; padding:0.4rem;"><input type="checkbox" class="new-grp-cb" value="${a.id}"> ${a.username}</label>`).join('');
+            document.getElementById('new-group-name').value = '';
+            document.getElementById('new-group-notify').checked = false;
+            document.getElementById('btn-save-group').textContent = "Créer le groupe";
+            openModal('modal-manage-groups');
+        }
+        function editGroup(id) {
+            editingGroupId = id;
+            const g = currentUser.profile.groups.find(x => x.id === id);
+            document.getElementById('new-group-name').value = g.name;
+            document.getElementById('new-group-notify').checked = g.notify || false;
+            document.querySelectorAll('.new-grp-cb').forEach(cb => { cb.checked = g.athletes.includes(cb.value); });
+            document.getElementById('btn-save-group').textContent = "Modifier le groupe";
+        }
+        function deleteGroup(gId) {
+            if(!confirm("Supprimer ce groupe ?")) return;
+            currentUser.profile.groups = currentUser.profile.groups.filter(g => g.id !== gId);
+            saveData(); renderManageGroupsList();
+        }
+        function saveNewGroup() {
+            const name = document.getElementById('new-group-name').value.trim();
+            const notify = document.getElementById('new-group-notify').checked;
+            if(!name) return;
+            let ids = []; document.querySelectorAll('.new-grp-cb:checked').forEach(cb => ids.push(cb.value));
+            
+            if(editingGroupId) {
+                const g = currentUser.profile.groups.find(x => x.id === editingGroupId);
+                g.name = name; g.athletes = ids; g.notify = notify;
+                editingGroupId = null;
+            } else {
+                currentUser.profile.groups.push({ id: 'grp_' + Date.now(), name, athletes: ids, notify });
+            }
+            saveData(); 
+            document.getElementById('new-group-name').value = '';
+            document.getElementById('new-group-notify').checked = false;
+            document.querySelectorAll('.new-grp-cb').forEach(cb => cb.checked = false);
+            document.getElementById('btn-save-group').textContent = "Créer le groupe";
+            renderManageGroupsList();
+        }
+        function renderManageGroupsList() {
+            document.getElementById('existing-groups-list').innerHTML = currentUser.profile.groups.map(g => `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:0.75rem; border-radius:var(--radius-md); margin-bottom:0.5rem;"><span><strong>${g.name}</strong> (${g.athletes.length} athlètes) ${g.notify?'🔔':''}</span><div style="display:flex;gap:0.5rem;"><button class="btn-icon" onclick="editGroup('${g.id}')">✏️</button><button class="btn-icon" style="color:var(--ffme-red);" onclick="deleteGroup('${g.id}')">🗑️</button></div></div>`).join('') || "<p style='color:var(--text-muted); font-size:0.9rem;'>Aucun groupe créé.</p>";
+        }
+
+        // --- COACH ATHLETES VIEW (Vue par Groupes) ---
+        function renderCoachAthletes() {
+            const club = getMyClub();
+            const athletes = appData.users.filter(u => u.clubId === club.id && u.role === 'athlete');
+            
+            document.getElementById('coach-groups-view').style.display = 'grid';
+            document.getElementById('coach-athletes-view').style.display = 'none';
+
+            let html = `<div class="card interactive" style="align-items:center; text-align:center; background: var(--gradient-primary); color: white; border:none;" onclick="showAthletesGrid('all')">
+                            <div style="font-size:2.5rem; margin-bottom:0.5rem;">🌍</div>
+                            <div class="card-title" style="color:white; font-size:1.3rem;">Tous les grimpeurs</div>
+                            <div style="font-size:0.9rem; opacity:0.9;">${athletes.length} athlètes</div>
+                        </div>`;
+                        
+            if(currentUser.profile.groups && currentUser.profile.groups.length > 0) {
+                currentUser.profile.groups.forEach(g => {
+                    html += `<div class="card interactive" style="align-items:center; text-align:center;" onclick="showAthletesGrid('${g.id}')">
+                                <div style="font-size:2.5rem; margin-bottom:0.5rem;">👥</div>
+                                <div class="card-title" style="font-size:1.3rem;">${g.name}</div>
+                                <div style="font-size:0.9rem; color:var(--text-muted); font-weight:600;">${g.athletes.length} athlètes</div>
+                             </div>`;
+                });
+            }
+            document.getElementById('coach-groups-view').innerHTML = html;
+        }
+
+        function showAthletesGrid(groupId) {
+            document.getElementById('coach-groups-view').style.display = 'none';
+            document.getElementById('coach-athletes-view').style.display = 'block';
+            
+            const club = getMyClub();
+            let targetAthletes = [];
+            let title = "";
+
+            if(groupId === 'all') {
+                targetAthletes = appData.users.filter(u => u.clubId === club.id && u.role === 'athlete');
+                title = "Tous les grimpeurs";
+            } else {
+                const g = currentUser.profile.groups.find(x => x.id === groupId);
+                if(g) {
+                    title = "Groupe : " + g.name;
+                    targetAthletes = g.athletes.map(id => appData.users.find(u => u.id === id)).filter(Boolean);
+                }
+            }
+            
+            document.getElementById('current-group-title').textContent = title;
+
+            document.getElementById('coach-athletes-grid').innerHTML = targetAthletes.map(ath => {
+                const pending = club.assignments.filter(a => a.athleteId === ath.id && !a.isDone).length;
+                let badge = pending > 0 ? `<span class="status-badge status-done">${pending} attente</span>` : `<span class="status-badge status-alert">0 séance</span>`;
+                let avatarHtml = `<div style="font-size:2rem; margin-bottom:0.5rem; width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:var(--bg-color); border-radius:50%;">👤</div>`;
+                if(ath.profile && ath.profile.avatar) avatarHtml = `<img src="${ath.profile.avatar}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; margin-bottom:0.5rem;">`;
+                return `<div class="card interactive" style="align-items:center; text-align:center;" onclick="openAthleteProfileCoach('${ath.id}')">${avatarHtml}<div class="card-title">${ath.username}</div><div>${badge}</div></div>`;
+            }).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center;'>Aucun athlète dans cette liste.</p>";
+        }
+
+        function backToGroupsView() {
+            renderCoachAthletes();
+        }
+        
+        let viewedAthleteId = null;
+        function openAthleteProfileCoach(athId) {
+            viewedAthleteId = athId;
+            const ath = appData.users.find(u => u.id === athId);
+            document.getElementById('view-athlete-name').textContent = "Profil de " + ath.username;
+            document.getElementById('view-athlete-objectives').textContent = ath.profile.objectives || "Aucun objectif.";
+            document.getElementById('view-athlete-comps').innerHTML = ath.profile.competitions.map(c => `<div class="comp-item"><b>${c.type}</b> - ${c.place}<br><span style="font-size:0.9rem; color:var(--text-muted);">${c.feeling}</span></div>`).join('') || "<p style='color:var(--text-muted);'>Aucune compétition.</p>";
+
+            renderRadarChart('chart-t1-coach', ath.profile.skillsT1, "Technique & Gestuelle", 'rgba(0, 85, 164, 0.5)');
+            renderRadarChart('chart-t2-coach', ath.profile.skillsT2, "Physique & Mental", 'rgba(239, 65, 53, 0.5)');
+            selectedUserIdForCalendar = ath.id; renderCalendar('coach-view-calendar-container');
+            
+            switchAthleteViewTab('profil');
+            openModal('modal-view-athlete');
+        }
+
+        function switchAthleteViewTab(tab) {
+            document.getElementById('btn-tab-ath-profil').classList.toggle('active', tab === 'profil');
+            document.getElementById('btn-tab-ath-hist').classList.toggle('active', tab === 'historique');
+            document.getElementById('coach-ath-view-profil').style.display = tab === 'profil' ? 'block' : 'none';
+            document.getElementById('coach-ath-view-historique').style.display = tab === 'historique' ? 'block' : 'none';
+            
+            if(tab === 'historique') {
+                const club = getMyClub();
+                const dones = club.assignments.filter(a => a.athleteId === viewedAthleteId && a.isDone).sort((a,b) => (b.doneAt||0) - (a.doneAt||0));
+                
+                document.getElementById('coach-ath-history-list').innerHTML = dones.map(a => {
+                    const s = club.sessions.find(x => x.id === a.sessionId);
+                    if(!s) return '';
+                    const rpeWarning = a.avgRpe >= 8 ? 'alert-rpe' : '';
+                    return `<div class="card interactive ${rpeWarning}" onclick="viewSessionReadonly('${a.id}')">
+                                <div class="card-header"><span class="card-category">RPE Moyen : ${a.avgRpe ? a.avgRpe.toFixed(1) : '-'}</span></div>
+                                <div class="card-title">${s.name}</div>
+                                <div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.5rem;">${a.doneAt ? new Date(a.doneAt).toLocaleDateString() : ''}</div>
+                            </div>`;
+                }).join('') || "<p style='color:var(--text-muted);'>Aucun historique.</p>";
+            }
+        }
+
+        function viewSessionReadonly(assId) {
+            const club = getMyClub();
+            const a = club.assignments.find(x => x.id === assId);
+            const s = club.sessions.find(x => x.id === a.sessionId);
+            
+            if(s.authorId !== currentUser.id && !s.isShared && currentUser.id !== a.athleteId) {
+                alert("Accès refusé : Cette séance appartient à un autre coach et n'a pas été partagée dans la bibliothèque du club."); return;
+            }
+
+            document.getElementById('view-session-title').textContent = s.name + " (Lecture Seule)";
+            
+            document.getElementById('view-session-athlete-form').style.display = 'none';
+            document.getElementById('view-session-coach-readonly').style.display = 'block';
+
+            document.getElementById('view-session-content-coach').innerHTML = s.blocks.map((bId, i) => {
+                const b = club.blocks.find(x=>x.id===bId);
+                let rpeHtml = '';
+                if(b.category !== 'Débrief') {
+                    const blockRpeVal = (a.blockRpes && a.blockRpes[bId]) ? a.blockRpes[bId] : '-';
+                    rpeHtml = `<div style="margin-top:0.75rem; font-size:0.9rem; color:var(--ffme-red); font-weight:700;">RPE Donné : ${blockRpeVal}</div>`;
+                }
+                return `<div style="padding:1rem; border:1px solid var(--border-color); border-left:4px solid var(--ffme-blue); border-radius:var(--radius-md); margin-bottom:1rem; background:var(--surface);">
+                            <div class="card-category" style="margin-bottom:0.5rem;">${b.category}</div>
+                            <div style="font-weight:800; font-size:1.1rem; margin-bottom:0.5rem;">${i+1}. ${b.title}</div>
+                            <div style="white-space:pre-wrap; font-size:0.95rem; color:var(--text-muted);">${b.description}</div>
+                            ${rpeHtml}
+                        </div>`;
+            }).join('');
+            
+            document.getElementById('ro-val-plaisir').textContent = a.plaisir || '-';
+            document.getElementById('ro-val-diff').textContent = a.difficulte || '-';
+            document.getElementById('ro-val-fatigue').textContent = a.fatigue || '-';
+            document.getElementById('ro-val-note').textContent = a.annotation || 'Aucune note ou lien renseigné.';
+
+            openModal('modal-view-session');
+        }
+
+        // --- ATHLETE : SESSIONS & EXECUTION ---
+        function renderAthleteSessions() {
+            const club = getMyClub(); const myAss = club.assignments.filter(a => a.athleteId === currentUser.id);
+            const todo = myAss.filter(a => !a.isDone); const done = myAss.filter(a => a.isDone).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
+            
+            const renderCard = (a) => {
+                const s = club.sessions.find(x => x.id === a.sessionId); if(!s) return '';
+                let assignerStr = '';
+                if(a.assignerId) {
+                    const c = appData.users.find(u=>u.id===a.assignerId);
+                    if(c) assignerStr = `<span style="font-size:0.75rem; background:#F1F5F9; color:var(--text-muted); padding:2px 6px; border-radius:4px; margin-left:8px;">Attribué par ${c.username}</span>`;
+                }
+                return `<div class="card interactive" onclick="openSessionAthlete('${a.id}')"><div class="card-header" style="align-items:center;"><span class="card-category">Entraînement</span>${a.isDone ? '<span class="status-badge status-done">Fait ✓</span>' : ''}</div><div class="card-title" style="font-size:1.25rem;">${s.name}</div><p style="font-size:0.95rem; color:var(--text-muted); margin:0;">🧗 ${s.blocks.length} exercices ${assignerStr}</p></div>`;
+            };
+            document.getElementById('classic-sessions-grid').innerHTML = todo.map(renderCard).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center; padding:3rem;'>Aucune séance en attente.</p>";
+            document.getElementById('done-sessions-grid').innerHTML = done.map(renderCard).join('') || "<p style='color:var(--text-muted);'>Aucune séance réalisée.</p>";
+        }
+
+        function openSessionAthlete(assId) {
+            viewedAssignmentId = assId; const club = getMyClub();
+            const a = club.assignments.find(x => x.id === assId); const s = club.sessions.find(x => x.id === a.sessionId);
+            
+            document.getElementById('view-session-title').textContent = s.name;
+            
+            document.getElementById('view-session-athlete-form').style.display = 'block';
+            document.getElementById('view-session-coach-readonly').style.display = 'none';
+
+            document.getElementById('session-annotation').value = a.annotation || '';
+            document.getElementById('session-plaisir').value = a.plaisir || 5; document.getElementById('val-plaisir').textContent = a.plaisir || 5;
+            document.getElementById('session-difficulte').value = a.difficulte || 5; document.getElementById('val-diff').textContent = a.difficulte || 5;
+            document.getElementById('session-fatigue').value = a.fatigue || 5; document.getElementById('val-fatigue').textContent = a.fatigue || 5;
+            
+            resetTimer(); document.getElementById('chrono-container').style.display='none';
+
+            document.getElementById('view-session-content-athlete').innerHTML = s.blocks.map((bId, i) => {
+                const b = club.blocks.find(x=>x.id===bId);
+                let rpeHtml = '';
+                if(b.category !== 'Débrief') {
+                    const blockRpeVal = (a.blockRpes && a.blockRpes[bId]) ? a.blockRpes[bId] : 5;
+                    rpeHtml = `<div style="margin-top:1rem; padding-top:1rem; border-top:1px dashed var(--border-color);">
+                        <label style="font-weight:700; color:var(--ffme-blue);">RPE pour cet exercice (1-10) : <b class="rpe-val-disp">${blockRpeVal}</b></label>
+                        <input type="range" class="block-rpe-slider rpe-slider" data-blockid="${bId}" min="1" max="10" value="${blockRpeVal}" oninput="this.previousElementSibling.querySelector('.rpe-val-disp').textContent=this.value">
+                    </div>`;
+                }
+                return `<div style="padding:1.5rem; border:1px solid var(--border-color); border-left:4px solid var(--ffme-blue); border-radius:var(--radius-md); margin-bottom:1.25rem; background:var(--surface);">
+                            <div class="card-category" style="margin-bottom:0.75rem;">${b.category}</div>
+                            <div style="font-weight:800; font-size:1.2rem; margin-bottom:0.75rem;">${i+1}. ${b.title}</div>
+                            <div style="white-space:pre-wrap; font-size:1rem; color:var(--text-muted);">${b.description}</div>
+                            ${rpeHtml}
+                        </div>`;
+            }).join('');
+            
+            const btn = document.getElementById('btn-validate-session');
+            btn.textContent = a.isDone ? "Mettre à jour mon retour" : "✓ Marquer comme terminée";
+            openModal('modal-view-session');
+        }
+
+        document.getElementById('btn-validate-session').onclick = function() {
+            const club = getMyClub();
+            const a = club.assignments.find(x => x.id === viewedAssignmentId);
+            const s = club.sessions.find(x => x.id === a.sessionId);
+            const isFirstValidation = !a.isDone;
+            
+            a.isDone = true; 
+            a.doneAt = a.doneAt || Date.now();
+            a.annotation = document.getElementById('session-annotation').value.trim();
+            a.plaisir = parseInt(document.getElementById('session-plaisir').value);
+            a.difficulte = parseInt(document.getElementById('session-difficulte').value);
+            a.fatigue = parseInt(document.getElementById('session-fatigue').value);
+            
+            a.blockRpes = {};
+            let rpeTotal = 0; let rpeCount = 0;
+            document.querySelectorAll('.block-rpe-slider').forEach(el => {
+                const val = parseInt(el.value);
+                a.blockRpes[el.dataset.blockid] = val;
+                rpeTotal += val; rpeCount++;
+            });
+            a.avgRpe = rpeCount > 0 ? rpeTotal / rpeCount : 0;
+            
+            if(isFirstValidation) {
+                const myDones = club.assignments.filter(x => x.athleteId === currentUser.id && x.isDone).sort((a,b) => b.doneAt - a.doneAt);
+                let hardCount = 0;
+                for(let i=0; i<Math.min(6, myDones.length); i++) { if(myDones[i].avgRpe >= 8) hardCount++; }
+                
+                const coach = appData.users.find(u => u.clubId === currentUser.clubId && u.role === 'coach');
+                
+                if(hardCount >= 3) {
+                    pushNotification(`🚨 Alerte Fatigue : <strong>${currentUser.username}</strong> a signalé 3 séances difficiles (RPE ≥ 8) récemment.`);
+                    if(coach && !coach.profile.settings.autoMessageDisabled) {
+                        club.messages.push({
+                            id: Date.now(), senderId: coach.id, receiverId: currentUser.id,
+                            text: "Je vois que récemment tes séances étaient difficiles, est ce que tu es fort fatigué(e) ou les séances sont-elles un peu trop difficiles ?",
+                            date: Date.now()
+                        });
+                    }
+                }
+
+                if(coach) {
+                    let shouldNotify = false;
+                    coach.profile.groups.forEach(g => { if(g.notify && g.athletes.includes(currentUser.id)) shouldNotify = true; });
+                    
+                    if(shouldNotify) {
+                        const pendingCount = club.assignments.filter(x => x.athleteId === currentUser.id && !x.isDone).length;
+                        club.notifications.unshift({
+                            id: Date.now()+1, text: `<strong>${currentUser.username}</strong> a terminé la séance <em>${s.name}</em>.`, date: new Date().toLocaleDateString('fr-FR', { hour: '2-digit', minute:'2-digit' })
+                        });
+                        if (pendingCount === 1) {
+                            club.notifications.unshift({ id: Date.now()+2, text: `Il ne reste plus qu'<strong>une seule séance</strong> en attente pour ${currentUser.username}.`, date: new Date().toLocaleDateString('fr-FR', { hour: '2-digit', minute:'2-digit' }) });
+                        } else if (pendingCount === 0) {
+                            club.notifications.unshift({ id: Date.now()+3, text: `<strong>${currentUser.username}</strong> a terminé toutes ses séances en attente !`, date: new Date().toLocaleDateString('fr-FR', { hour: '2-digit', minute:'2-digit' }) });
+                        }
+                    }
+                }
+            }
+
+            saveData(); closeModal('modal-view-session'); renderAthleteSessions();
+        }
+
+        // --- ATHLETE PROFIL & AVATAR ---
+        function renderAthleteProfile() {
+            document.getElementById('profile-display-name').textContent = currentUser.username;
+            document.getElementById('profile-objectives').value = currentUser.profile.objectives || '';
+            
+            const pre = document.getElementById('profile-avatar-preview');
+            const pla = document.getElementById('profile-avatar-placeholder');
+            if (currentUser.profile.avatar) {
+                pre.src = currentUser.profile.avatar; pre.style.display = 'block'; pla.style.display = 'none';
+            } else { pre.style.display = 'none'; pla.style.display = 'block'; }
+
+            const pCode = document.getElementById('profile-parent-code-display');
+            if(currentUser.parentCode) { pCode.innerHTML = `<div class="parent-code-badge">Code Enfant : ${currentUser.parentCode}</div>`; pCode.style.display = 'block'; }
+            else { pCode.style.display = 'none'; }
+            
+            const childrenList = document.getElementById('profile-linked-children-list');
+            if(currentUser.linkedChildren.length > 0) {
+                childrenList.innerHTML = "Enfants liés : " + currentUser.linkedChildren.map(cId => {
+                    const c = appData.users.find(u=>u.id===cId); return c ? `<span style="background:var(--bg-color); padding:2px 6px; border-radius:4px; font-weight:600;">${c.username}</span>` : '';
+                }).join('');
+            } else { childrenList.innerHTML = ''; }
+
+            document.getElementById('athlete-competitions-list').innerHTML = currentUser.profile.competitions.map(c => `<div class="comp-item"><b>${c.type}</b> - ${c.place}<br><span style="font-size:0.9rem; color:var(--text-muted);">${c.feeling}</span></div>`).join('') || "<p style='color:var(--text-muted);'>Aucune compétition enregistrée.</p>";
+
+            renderRadarChart('chart-t1-athlete', currentUser.profile.skillsT1, "Technique & Gestuelle", 'rgba(0, 85, 164, 0.5)');
+            renderRadarChart('chart-t2-athlete', currentUser.profile.skillsT2, "Physique & Mental", 'rgba(239, 65, 53, 0.5)');
+            selectedUserIdForCalendar = currentUser.id; renderCalendar('athlete-calendar-container');
+        }
+        function saveProfileObjectives() { currentUser.profile.objectives = document.getElementById('profile-objectives').value.trim(); saveData(); alert("Objectifs sauvegardés."); }
+        
+        function handleAvatarUpload(e) {
+            const file = e.target.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas'); const size = 250;
+                    canvas.width = size; canvas.height = size; const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, size, size);
+                    const minDim = Math.min(img.width, img.height);
+                    const sx = (img.width - minDim) / 2; const sy = (img.height - minDim) / 2;
+                    ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+                    currentUser.profile.avatar = canvas.toDataURL('image/jpeg', 0.8);
+                    saveData(); renderAthleteProfile();
+                }
+                img.src = ev.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        function openCompModal() { document.getElementById('comp-type').value=''; document.getElementById('comp-place').value=''; document.getElementById('comp-feeling').value=''; openModal('modal-competition'); }
+        function saveCompetition() {
+            const type = document.getElementById('comp-type').value.trim(); const place = document.getElementById('comp-place').value.trim(); const feeling = document.getElementById('comp-feeling').value.trim();
+            if(!type) return;
+            currentUser.profile.competitions.push({ type, place, feeling, date: Date.now() });
+            saveData(); closeModal('modal-competition'); renderAthleteProfile();
+        }
+
+        // SKILLS
+        function openSkillsModal() {
+            const buildRange = (themes, obj, containerId) => { document.getElementById(containerId).innerHTML = themes.map(t => `<div style="display:flex; flex-direction:column;"><label style="font-size:0.85rem; font-weight:600;">${t} (<b>${obj[t]||0}</b>)</label><input type="range" class="rpe-slider" min="0" max="10" value="${obj[t]||0}" oninput="this.previousElementSibling.querySelector('b').textContent = this.value" data-theme="${t}"></div>`).join(''); };
+            buildRange(themes1, currentUser.profile.skillsT1, 'skills-form-t1'); buildRange(themes2, currentUser.profile.skillsT2, 'skills-form-t2'); openModal('modal-skills');
+        }
+        function saveSkills() { document.querySelectorAll('#skills-form-t1 input').forEach(inp => currentUser.profile.skillsT1[inp.dataset.theme] = parseInt(inp.value)); document.querySelectorAll('#skills-form-t2 input').forEach(inp => currentUser.profile.skillsT2[inp.dataset.theme] = parseInt(inp.value)); saveData(); closeModal('modal-skills'); renderAthleteProfile(); }
+        function renderRadarChart(canvasId, dataObj, label, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
+            chartInstances[canvasId] = new Chart(ctx, { type: 'radar', data: { labels: Object.keys(dataObj), datasets: [{ label, data: Object.values(dataObj), backgroundColor: color, borderColor: color.replace('0.5', '1'), borderWidth: 2 }] }, options: { scales: { r: { min: 0, max: 10, ticks: { display: false } } }, maintainAspectRatio: false }});
+        }
+
+        // CALENDAR
+        function renderCalendar(containerId) {
+            const targetUser = appData.users.find(x => x.id === selectedUserIdForCalendar);
+            const cal = targetUser.profile.calendar || {}; const club = getMyClub();
+            const dStr = (d) => `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const days = new Date(currentYear, currentMonth + 1, 0).getDate();
+            let start = new Date(currentYear, currentMonth, 1).getDay(); start = start === 0 ? 6 : start - 1; 
+            const today = new Date(); const isCurr = today.getMonth() === currentMonth && today.getFullYear() === currentYear;
+            const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+
+            let html = `<div class="calendar-header"><button class="btn-icon" style="background:var(--bg-color); border:1px solid var(--border-color);" onclick="changeMonth(-1, '${containerId}')">&lt;</button><h3 style="margin:0;">${months[currentMonth]} ${currentYear}</h3><button class="btn-icon" style="background:var(--bg-color); border:1px solid var(--border-color);" onclick="changeMonth(1, '${containerId}')">&gt;</button></div><div class="calendar-grid">` + ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(d => `<div class="calendar-day-name">${d}</div>`).join('');
+            
+            for(let i=0; i<start; i++) html += `<div></div>`;
+            for(let d=1; d<=days; d++) {
+                const data = cal[dStr(d)]; let cls = "calendar-day";
+                if(isCurr && today.getDate() === d) cls += " today";
+                if(data && data.active) cls += " active-day";
+                let sHtml = '';
+                if(data && data.assignmentId) {
+                    const assign = club.assignments.find(a => a.id === data.assignmentId);
+                    if(assign) { const sess = club.sessions.find(s => s.id === assign.sessionId); if(sess) sHtml = `<div class="cal-session-indicator">${sess.name}</div>`; }
+                }
+                html += `<div class="${cls}" onclick="openCalNote('${dStr(d)}')"><span class="day-number">${d}</span>${sHtml}${data?.note ? '<div class="cal-note-indicator">'+data.note+'</div>' : ''}</div>`;
+            }
+            document.getElementById(containerId).innerHTML = html + `</div>`;
+        }
+        function changeMonth(delta, cid) { currentMonth += delta; if(currentMonth < 0) { currentMonth = 11; currentYear--; } if(currentMonth > 11) { currentMonth = 0; currentYear++; } renderCalendar(cid); }
+
+        function openCalNote(dateStr) {
+            selectedDateForNote = dateStr; const targetUser = appData.users.find(u => u.id === selectedUserIdForCalendar);
+            const data = (targetUser.profile.calendar && targetUser.profile.calendar[dateStr]) || {};
+            document.getElementById('cal-note-status').value = data.active ? "true" : "false"; document.getElementById('cal-note-text').value = data.note || '';
+            const select = document.getElementById('cal-note-session'); 
+            select.innerHTML = '<option value="">-- Aucune séance --</option>';
+            const club = getMyClub(); const userAssignments = club.assignments.filter(a => a.athleteId === targetUser.id);
+            userAssignments.forEach(a => {
+                if (a.isDone && a.id !== data.assignmentId) return; 
+                const s = club.sessions.find(x => x.id === a.sessionId);
+                if(s) select.innerHTML += `<option value="${a.id}" ${a.id === data.assignmentId ? 'selected' : ''}>${a.isDone?'[Validée] ':''}${s.name}</option>`; 
+            });
+            openModal('modal-calendar-note');
+        }
+        function saveCalendarNote() {
+            const u = appData.users.find(x => x.id === selectedUserIdForCalendar);
+            const isAct = document.getElementById('cal-note-status').value==="true"; const note = document.getElementById('cal-note-text').value.trim(); const assignId = document.getElementById('cal-note-session').value;
+            if(!isAct && !note && !assignId) { delete u.profile.calendar[selectedDateForNote]; } 
+            else { u.profile.calendar[selectedDateForNote] = { active: isAct, note: note, assignmentId: assignId || null }; }
+            saveData(); closeModal('modal-calendar-note'); renderCalendar(currentUser.role === 'coach' ? 'coach-view-calendar-container' : 'athlete-calendar-container');
+        }
+
+        // TIMER
+        let timerInterval = null; let timeRemaining = 0; let isWorkPhase = true; let currentRound = 1;
+        function updateTimerDisplay() { const m = Math.floor(timeRemaining/60).toString().padStart(2,'0'); const s = (timeRemaining%60).toString().padStart(2,'0'); document.getElementById('timer-display').textContent = `${m}:${s}`; }
+        function startTimer() {
+            if(timerInterval) return; 
+            const w = parseInt(document.getElementById('timer-work').value)||10; const r = parseInt(document.getElementById('timer-rest').value)||20; const totalRounds = parseInt(document.getElementById('timer-rounds').value)||5;
+            if(timeRemaining === 0) { timeRemaining = w; isWorkPhase = true; currentRound = 1; }
+            timerInterval = setInterval(() => {
+                timeRemaining--;
+                if(timeRemaining < 0) { if(isWorkPhase) { isWorkPhase = false; timeRemaining = r; } else { isWorkPhase = true; timeRemaining = w; currentRound++; if(currentRound > totalRounds) { resetTimer(); return alert("Terminé !"); } } }
+                updateTimerDisplay();
+            }, 1000);
+        }
+        function pauseTimer() { clearInterval(timerInterval); timerInterval = null; }
+        function resetTimer() { pauseTimer(); timeRemaining = 0; document.getElementById('timer-display').textContent = "00:00"; }
+
+        // --- MESSAGERIE AMÉLIORÉE (ANNUAIRE) ---
+        function toggleChatFullscreen() {
+            document.getElementById('global-chat-panel').classList.toggle('fullscreen');
+        }
+
+        function toggleChat() {
+            const p = document.getElementById('global-chat-panel');
+            if(p.style.display === 'flex') { p.style.display = 'none'; return; }
+            p.style.display = 'flex';
+            showChatList();
+        }
+
+        function showChatList() {
+            document.getElementById('chat-view-list').style.display = 'flex';
+            document.getElementById('chat-view-conversation').style.display = 'none';
+            document.getElementById('chat-back-btn').style.display = 'none';
+            document.getElementById('chat-header-title').textContent = "Messagerie";
+
+            const club = getMyClub();
+            const allUsers = appData.users.filter(u => u.clubId === club.id && u.id !== currentUser.id);
+            
+            const annuaire = [...allUsers].sort((a,b) => {
+                if(a.role === 'coach' && b.role !== 'coach') return -1;
+                if(a.role !== 'coach' && b.role === 'coach') return 1;
+                return a.username.localeCompare(b.username);
+            });
+
+            let recentsObj = {};
+            club.messages.forEach(m => {
+                if(m.senderId === currentUser.id || m.receiverId === currentUser.id) {
+                    const otherId = m.senderId === currentUser.id ? m.receiverId : m.senderId;
+                    if(!recentsObj[otherId] || recentsObj[otherId].date < m.date) { recentsObj[otherId] = m; }
+                }
+            });
+            const recentsArray = Object.values(recentsObj).sort((a,b) => b.date - a.date);
+
+            const renderUser = (uId, lastMsgStr = '') => {
+                const u = appData.users.find(x=>x.id===uId); if(!u) return '';
+                let avatar = u.profile.avatar ? `<img src="${u.profile.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : '👤';
+                return `<div class="chat-user-item" onclick="openConversation('${u.id}')">
+                            <div class="avatar">${avatar}</div>
+                            <div class="details"><span class="name">${u.username}</span><span class="role">${u.role}</span>${lastMsgStr ? `<span class="last-msg">${lastMsgStr}</span>` : ''}</div>
+                        </div>`;
+            };
+
+            document.getElementById('chat-recent-list').innerHTML = recentsArray.length ? recentsArray.map(m => {
+                const otherId = m.senderId === currentUser.id ? m.receiverId : m.senderId;
+                return renderUser(otherId, m.text);
+            }).join('') : "<p style='padding:1rem; font-size:0.85rem; color:var(--text-muted); margin:0;'>Aucune conversation récente.</p>";
+
+            document.getElementById('chat-annuaire-list').innerHTML = annuaire.map(u => renderUser(u.id)).join('');
+        }
+
+        function openConversation(targetId) {
+            activeChatUserId = targetId; const targetUser = appData.users.find(u=>u.id===targetId);
+            document.getElementById('chat-view-list').style.display = 'none';
+            document.getElementById('chat-view-conversation').style.display = 'flex';
+            document.getElementById('chat-back-btn').style.display = 'block';
+            document.getElementById('chat-header-title').textContent = targetUser.username;
+            loadMessages();
+        }
+        
+        function loadMessages() {
+            if(!activeChatUserId) return;
+            const container = document.getElementById('chat-messages-container'); const club = getMyClub();
+            const msgs = club.messages.filter(m => (m.senderId === currentUser.id && m.receiverId === activeChatUserId) || (m.senderId === activeChatUserId && m.receiverId === currentUser.id));
+            container.innerHTML = msgs.map(m => {
+                const isMe = m.senderId === currentUser.id; const dateStr = new Date(m.date).toLocaleDateString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+                return `<div class="chat-msg ${isMe ? 'msg-me' : 'msg-them'}">${m.text}<span class="date">${dateStr}</span></div>`;
+            }).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function sendMessage() {
+            const text = document.getElementById('chat-input-text').value.trim();
+            if(!text || !activeChatUserId) return;
+            getMyClub().messages.push({ id: Date.now(), senderId: currentUser.id, receiverId: activeChatUserId, text: text, date: Date.now() });
+            saveData(); document.getElementById('chat-input-text').value = ''; loadMessages();
+        }
+
+        function openCoachSettingsModal() { document.getElementById('coach-setting-automessage').checked = currentUser.profile.settings.autoMessageDisabled; openModal('modal-coach-settings'); }
+        function saveCoachSettings() { currentUser.profile.settings.autoMessageDisabled = document.getElementById('coach-setting-automessage').checked; saveData(); closeModal('modal-coach-settings'); }
+
+        // LANCEMENT DE L'APPLICATION AVEC FIREBASE
+        loadFirebaseData();
+    </script>
+</body>
+</html>
