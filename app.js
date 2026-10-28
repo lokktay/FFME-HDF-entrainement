@@ -34,6 +34,8 @@ let editingBlockId = null; let editingSessionId = null; let builderBlocks = [];
 let currentSessionFilter = 'Toutes'; let coachBlockSearch = ''; let coachSessionSearch = ''; 
 let coachBlockFilter = 'Toutes'; let currentSessionLibraryTab = 'personal'; 
 let activeChatUserId = null; let editingGroupId = null;
+let activeChatUserId = null; let editingGroupId = null;
+let isRegistering = false; // <-- NOUVEAU FLAG
 
 function getEmptyProfile() {
     let p = { objectives: '', avatar: null, skillsT1: {}, skillsT2: {}, calendar: {}, competitions: [], settings: { autoMessageDisabled: false }, groups: [] };
@@ -43,6 +45,16 @@ function getEmptyProfile() {
 
 // === INITIALISATION ET ÉCOUTEURS TEMPS RÉEL ===
 function initApp() {
+    db.collection('clubs').onSnapshot(snap => {
+        allClubs = snap.docs.map(d => d.data());
+        if(document.getElementById('auth-screen').style.display !== 'none') updateAuthClubList();
+    });
+
+    auth.onAuthStateChanged(async user => {
+        if (isRegistering) return; // <-- NOUVELLE LIGNE : On ignore cet écouteur pendant l'inscription
+
+        if (user) {
+            if (user.emailVerified) {
     // Écoute de tous les clubs pour le menu d'inscription
     db.collection('clubs').onSnapshot(snap => {
         allClubs = snap.docs.map(d => d.data());
@@ -160,50 +172,59 @@ async function register() {
     let clubId = document.getElementById('reg-club').value;
 
     if (!email || !password || !username || !dob) return alert("Veuillez remplir tous les champs.");
+    
+    let newClubName = '';
     if (clubId === '_new_') {
-        const newClubName = document.getElementById('reg-new-club').value.trim();
+        newClubName = document.getElementById('reg-new-club').value.trim();
         if (!newClubName) return alert("Nom du club requis.");
         clubId = 'club_' + Date.now();
-        await db.collection('clubs').doc(clubId).set({ id: clubId, name: newClubName, categories: defaultCategories });
     } else if (!clubId) return alert("Sélectionnez un club.");
 
     document.getElementById('loader-screen').style.display = 'flex';
+    isRegistering = true; // On bloque la déconnexion automatique
 
     try {
+        // 1. Création du compte Firebase Auth (Firebase nous connecte automatiquement)
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const user = userCredential.user;
-        await user.sendEmailVerification();
+
+        // 2. Maintenant qu'on est authentifié, Firebase nous autorise à créer le club !
+        if (document.getElementById('reg-club').value === '_new_') {
+            await db.collection('clubs').doc(clubId).set({ id: clubId, name: newClubName, categories: defaultCategories });
+        }
 
         const age = (new Date() - new Date(dob)) / (1000*60*60*24*365.25);
         const parentCode = age < 18 ? Math.floor(10000 + Math.random() * 90000).toString() : null;
 
         const newUser = { id: user.uid, email: email, username, role, clubId, dob, parentCode, linkedChildren: [], profile: getEmptyProfile() };
         
-        // Liaison parent-enfant
         if(age >= 18) {
             const code = document.getElementById('reg-link-code').value.trim();
             if(code) {
                 const childSnap = await db.collection('users').where('parentCode', '==', code).get();
-                if(!childSnap.empty) {
-                    newUser.linkedChildren.push(childSnap.docs[0].id);
-                }
+                if(!childSnap.empty) newUser.linkedChildren.push(childSnap.docs[0].id);
             }
         }
         
+        // 3. On crée le profil utilisateur
         await db.collection('users').doc(newUser.id).set(newUser);
+        
+        // 4. On envoie l'email, on déconnecte proprement et on enlève le drapeau
+        await user.sendEmailVerification();
         await auth.signOut();
+        isRegistering = false; 
         
         document.getElementById('loader-screen').style.display = 'none';
         alert("Compte créé avec succès ! Un email de vérification vous a été envoyé. Veuillez cliquer sur le lien avant de vous connecter.");
         switchAuthTab('login');
     } catch (error) {
+        isRegistering = false; // En cas d'erreur, on réactive aussi l'écouteur
         document.getElementById('loader-screen').style.display = 'none';
         if (error.code === 'auth/email-already-in-use') alert("Cette adresse email est déjà utilisée.");
         else if (error.code === 'auth/weak-password') alert("Le mot de passe doit contenir au moins 6 caractères.");
         else alert("Erreur lors de l'inscription : " + error.message);
     }
 }
-
 async function login() {
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
