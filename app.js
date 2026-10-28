@@ -1051,7 +1051,11 @@ function sendMessage() {
     document.getElementById('chat-input-text').value = ''; 
 }
 
-function openCoachSettingsModal() { document.getElementById('coach-setting-automessage').checked = currentUser.profile.settings.autoMessageDisabled; openModal('modal-coach-settings'); }
+function openCoachSettingsModal() { 
+    document.getElementById('coach-setting-automessage').checked = currentUser.profile.settings.autoMessageDisabled; 
+    openModal('modal-coach-settings'); 
+}
+
 async function saveCoachSettings() { 
     currentUser.profile.settings.autoMessageDisabled = document.getElementById('coach-setting-automessage').checked; 
     await db.collection('users').doc(currentUser.id).update({ 'profile.settings': currentUser.profile.settings });
