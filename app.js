@@ -34,7 +34,6 @@ let editingBlockId = null; let editingSessionId = null; let builderBlocks = [];
 let currentSessionFilter = 'Toutes'; let coachBlockSearch = ''; let coachSessionSearch = ''; 
 let coachBlockFilter = 'Toutes'; let currentSessionLibraryTab = 'personal'; 
 let activeChatUserId = null; let editingGroupId = null;
-let activeChatUserId = null; let editingGroupId = null;
 let isRegistering = false; // <-- NOUVEAU FLAG
 
 function getEmptyProfile() {
