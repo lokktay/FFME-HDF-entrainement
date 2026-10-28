@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ffme-cache-auto';
+const CACHE_NAME = 'ffme-cache-auto-2';
 const urlsToCache = [
   './',
   './index.html',
