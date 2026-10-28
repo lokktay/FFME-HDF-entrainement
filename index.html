@@ -375,5 +375,14 @@
 
     <!-- Lien vers le fichier JavaScript -->
     <script src="app.js"></script>
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(reg => console.log('Service Worker activé !'))
+        .catch(err => console.error('Erreur Service Worker :', err));
+    });
+  }
+</script>
 </body>
 </html>
