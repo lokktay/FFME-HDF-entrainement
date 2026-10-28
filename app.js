@@ -1064,3 +1064,4 @@ async function saveCoachSettings() {
 
 // Lancement Initial
 initApp();
+}
