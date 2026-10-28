@@ -50,35 +50,37 @@ function initApp() {
         if(document.getElementById('auth-screen').style.display !== 'none') updateAuthClubList();
     });
 
-    auth.onAuthStateChanged(async user => {
-        if (isRegistering) return; // <-- NOUVELLE LIGNE : On ignore cet écouteur pendant l'inscription
+   auth.onAuthStateChanged(async user => {
+        if (isRegistering) return; // On ignore l'écouteur pendant la création du compte
 
         if (user) {
-            if (user.emailVerified) {
-    // Écoute de tous les clubs pour le menu d'inscription
-    db.collection('clubs').onSnapshot(snap => {
-        allClubs = snap.docs.map(d => d.data());
-        if(document.getElementById('auth-screen').style.display !== 'none') updateAuthClubList();
-    });
-
-    // Écoute de l'authentification (Maintien de session)
-    auth.onAuthStateChanged(async user => {
-        if (user) {
-            if (user.emailVerified) {
-                const uSnap = await db.collection('users').doc(user.uid).get();
-                if (uSnap.exists) {
-                    currentUser = uSnap.data();
-                    startRealtimeListeners(currentUser.clubId); // Lancement de la magie du temps réel
-                    document.getElementById('loader-screen').style.display = 'none';
-                    showApp();
+            try {
+                if (user.emailVerified) {
+                    const uSnap = await db.collection('users').doc(user.uid).get();
+                    
+                    if (uSnap.exists) {
+                        currentUser = uSnap.data();
+                        startRealtimeListeners(currentUser.clubId); // Magie du temps réel
+                        document.getElementById('loader-screen').style.display = 'none';
+                        showApp();
+                    } else {
+                        // LE BUG ÉTAIT ICI : On déconnectait l'utilisateur sans cacher le loader
+                        document.getElementById('loader-screen').style.display = 'none';
+                        await auth.signOut();
+                        alert("Profil introuvable. Votre compte a été mal créé. Veuillez vous réinscrire.");
+                        initAuthUI();
+                    }
                 } else {
-                    auth.signOut();
-                    alert("Profil introuvable.");
+                    document.getElementById('loader-screen').style.display = 'none';
+                    await auth.signOut();
+                    alert("Veuillez valider votre adresse email en cliquant sur le lien reçu, puis reconnectez-vous.");
+                    initAuthUI();
                 }
-            } else {
+            } catch (error) {
+                // S'il y a la moindre erreur (ex: droits Firestore), on cache le loader pour ne pas bloquer l'app
                 document.getElementById('loader-screen').style.display = 'none';
-                auth.signOut();
-                alert("Veuillez valider votre adresse email en cliquant sur le lien reçu, puis reconnectez-vous.");
+                await auth.signOut();
+                alert("Erreur de synchronisation : " + error.message);
                 initAuthUI();
             }
         } else {
@@ -86,8 +88,6 @@ function initApp() {
             initAuthUI();
         }
     });
-}
-
 // LA MAGIE FIREBASE : Ces écouteurs mettent à jour l'app en temps réel dès qu'une donnée change sur le cloud
 let listeners = [];
 function startRealtimeListeners(clubId) {
