@@ -733,9 +733,30 @@ function updateRPEBadgeUI(inputEl) {
     }
 }
 // --- ATHLETE : SESSIONS & EXECUTION ---
+
+// Helpers RPE (Couleurs et Textes)
+function getRPEInfo(val) {
+    const v = parseInt(val);
+    if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' }; // Vert
+    if (v <= 5) return { text: `${v}/10 - Modéré`, color: '#3B82F6' };    // Bleu
+    if (v <= 7) return { text: `${v}/10 - Difficile`, color: '#F59E0B' };  // Orange
+    if (v <= 9) return { text: `${v}/10 - Très Dur (Rési)`, color: '#EF4135' }; // Rouge
+    return { text: '10/10 - Effort Maximal !', color: '#991B1B' };       // Rouge foncé
+}
+
+function updateRPEBadgeUI(inputEl) {
+    const info = getRPEInfo(inputEl.value);
+    const badge = inputEl.previousElementSibling.querySelector('.rpe-badge');
+    if (badge) {
+        badge.textContent = info.text;
+        badge.style.backgroundColor = info.color;
+    }
+}
+
 function renderAthleteSessions() {
     const myAss = clubAssignments.filter(a => a.athleteId === currentUser.id);
-    const todo = myAss.filter(a => !a.isDone); const done = myAss.filter(a => a.isDone).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
+    const todo = myAss.filter(a => !a.isDone); 
+    const done = myAss.filter(a => a.isDone).sort((a,b)=>(b.doneAt||0)-(a.doneAt||0));
     
     const renderCard = (a) => {
         const s = clubSessions.find(x => x.id === a.sessionId); if(!s) return '';
@@ -746,6 +767,7 @@ function renderAthleteSessions() {
         }
         return `<div class="card interactive" onclick="openSessionAthlete('${a.id}')"><div class="card-header" style="align-items:center;"><span class="card-category">Entraînement</span>${a.isDone ? '<span class="status-badge status-done">Fait ✓</span>' : ''}</div><div class="card-title" style="font-size:1.25rem;">${s.name}</div><p style="font-size:0.95rem; color:var(--text-muted); margin:0;">🧗 ${s.blocks.length} exercices ${assignerStr}</p></div>`;
     };
+    
     document.getElementById('classic-sessions-grid').innerHTML = todo.map(renderCard).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center; padding:3rem;'>Aucune séance en attente.</p>";
     document.getElementById('done-sessions-grid').innerHTML = done.map(renderCard).join('') || "<p style='color:var(--text-muted);'>Aucune séance réalisée.</p>";
 }
