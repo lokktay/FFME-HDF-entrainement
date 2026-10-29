@@ -714,7 +714,24 @@ function viewSessionReadonly(assId) {
     document.getElementById('ro-val-note').textContent = a.annotation || 'Aucune note ou lien renseigné.';
     openModal('modal-view-session');
 }
+// Helper pour générer la couleur et le texte du RPE
+function getRPEInfo(val) {
+    const v = parseInt(val);
+    if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' }; // Vert
+    if (v <= 5) return { text: `${v}/10 - Modéré`, color: '#3B82F6' };    // Bleu
+    if (v <= 7) return { text: `${v}/10 - Difficile`, color: '#F59E0B' };  // Orange
+    if (v <= 9) return { text: `${v}/10 - Très Dur (Rési)`, color: '#EF4135' }; // Rouge
+    return { text: '10/10 - Effort Maximal !', color: '#991B1B' };       // Rouge foncé
+}
 
+function updateRPEBadgeUI(inputEl) {
+    const info = getRPEInfo(inputEl.value);
+    const badge = inputEl.previousElementSibling.querySelector('.rpe-badge');
+    if (badge) {
+        badge.textContent = info.text;
+        badge.style.backgroundColor = info.color;
+    }
+}
 // --- ATHLETE : SESSIONS & EXECUTION ---
 function renderAthleteSessions() {
     const myAss = clubAssignments.filter(a => a.athleteId === currentUser.id);
@@ -735,96 +752,61 @@ function renderAthleteSessions() {
 
 function openSessionAthlete(assId) {
     viewedAssignmentId = assId; 
-    const a = clubAssignments.find(x => x.id === assId); const s = clubSessions.find(x => x.id === a.sessionId);
+    const a = clubAssignments.find(x => x.id === assId); 
+    const s = clubSessions.find(x => x.id === a.sessionId);
     
     document.getElementById('view-session-title').textContent = s.name;
     document.getElementById('view-session-athlete-form').style.display = 'block';
     document.getElementById('view-session-coach-readonly').style.display = 'none';
 
     document.getElementById('session-annotation').value = a.annotation || '';
-    document.getElementById('session-plaisir').value = a.plaisir || 5; document.getElementById('val-plaisir').textContent = a.plaisir || 5;
-    document.getElementById('session-difficulte').value = a.difficulte || 5; document.getElementById('val-diff').textContent = a.difficulte || 5;
-    document.getElementById('session-fatigue').value = a.fatigue || 5; document.getElementById('val-fatigue').textContent = a.fatigue || 5;
+    document.getElementById('session-plaisir').value = a.plaisir || 5; 
+    document.getElementById('val-plaisir').textContent = a.plaisir || 5;
+    document.getElementById('session-difficulte').value = a.difficulte || 5; 
+    document.getElementById('val-diff').textContent = a.difficulte || 5;
+    document.getElementById('session-fatigue').value = a.fatigue || 5; 
+    document.getElementById('val-fatigue').textContent = a.fatigue || 5;
     
-    resetTimer(); document.getElementById('chrono-container').style.display='none';
+    resetTimer(); 
+    document.getElementById('chrono-container').style.display = 'none';
 
     document.getElementById('view-session-content-athlete').innerHTML = s.blocks.map((bId, i) => {
-        const b = clubBlocks.find(x=>x.id===bId);
+        const b = clubBlocks.find(x => x.id === bId);
+        if (!b) return '';
+
         let rpeHtml = '';
-        if(b && b.category !== 'Débrief') {
+        if (b.category !== 'Débrief') {
             const blockRpeVal = (a.blockRpes && a.blockRpes[bId]) ? a.blockRpes[bId] : 5;
-            rpeHtml = `<div style="margin-top:1rem; padding-top:1rem; border-top:1px dashed var(--border-color);">
-                <label style="font-weight:700; color:var(--ffme-blue);">RPE pour cet exercice (1-10) : <b class="rpe-val-disp">${blockRpeVal}</b></label>
-                <input type="range" class="block-rpe-slider rpe-slider" data-blockid="${bId}" min="1" max="10" value="${blockRpeVal}" oninput="this.previousElementSibling.querySelector('.rpe-val-disp').textContent=this.value">
+            const rpeInfo = getRPEInfo(blockRpeVal);
+
+            rpeHtml = `
+            <div class="rpe-container">
+                <div class="rpe-header">
+                    <span class="rpe-title">Ressenti d'effort (RPE) :</span>
+                    <span class="rpe-badge" style="background-color: ${rpeInfo.color};">${rpeInfo.text}</span>
+                </div>
+                <input type="range" class="block-rpe-slider rpe-slider-custom" data-blockid="${bId}" min="1" max="10" value="${blockRpeVal}" oninput="updateRPEBadgeUI(this)">
+                <div class="rpe-scale-labels">
+                    <span>1 - Repos</span>
+                    <span>5 - Moyen</span>
+                    <span>10 - Max</span>
+                </div>
             </div>`;
         }
-        return b ? `<div style="padding:1.5rem; border:1px solid var(--border-color); border-left:4px solid var(--ffme-blue); border-radius:var(--radius-md); margin-bottom:1.25rem; background:var(--surface);">
-                    <div class="card-category" style="margin-bottom:0.75rem;">${b.category}</div>
-                    <div style="font-weight:800; font-size:1.2rem; margin-bottom:0.75rem;">${i+1}. ${b.title}</div>
-                    <div style="white-space:pre-wrap; font-size:1rem; color:var(--text-muted);">${b.description}</div>
-                    ${rpeHtml}
-                </div>` : '';
+
+        return `
+        <div class="athlete-block-card">
+            <div class="card-category" style="margin-bottom:0.5rem;">${b.category}</div>
+            <div style="font-weight:800; font-size:1.15rem; margin-bottom:0.5rem; color:var(--ffme-blue-dark);">${i+1}. ${b.title}</div>
+            <div style="white-space:pre-wrap; font-size:0.95rem; color:var(--text-dark); line-height:1.5;">${b.description}</div>
+            ${rpeHtml}
+        </div>`;
     }).join('');
     
     const btn = document.getElementById('btn-validate-session');
-    btn.textContent = a.isDone ? "Mettre à jour mon retour" : "✓ Marquer comme terminée";
+    btn.textContent = a.isDone ? "Mettre à jour mon retour" : "✓ Marquer la séance comme terminée";
     openModal('modal-view-session');
 }
-
-document.getElementById('btn-validate-session').onclick = async function() {
-    const a = clubAssignments.find(x => x.id === viewedAssignmentId);
-    const s = clubSessions.find(x => x.id === a.sessionId);
-    const isFirstValidation = !a.isDone;
-    
-    a.isDone = true; 
-    a.doneAt = a.doneAt || Date.now();
-    a.annotation = document.getElementById('session-annotation').value.trim();
-    a.plaisir = parseInt(document.getElementById('session-plaisir').value);
-    a.difficulte = parseInt(document.getElementById('session-difficulte').value);
-    a.fatigue = parseInt(document.getElementById('session-fatigue').value);
-    
-    a.blockRpes = {};
-    let rpeTotal = 0; let rpeCount = 0;
-    document.querySelectorAll('.block-rpe-slider').forEach(el => {
-        const val = parseInt(el.value);
-        a.blockRpes[el.dataset.blockid] = val;
-        rpeTotal += val; rpeCount++;
-    });
-    a.avgRpe = rpeCount > 0 ? rpeTotal / rpeCount : 0;
-    
-    await db.collection('assignments').doc(a.id).update(a);
-
-    if(isFirstValidation) {
-        const myDones = clubAssignments.filter(x => x.athleteId === currentUser.id && x.isDone).sort((a,b) => b.doneAt - a.doneAt);
-        let hardCount = 0;
-        for(let i=0; i<Math.min(6, myDones.length); i++) { if(myDones[i].avgRpe >= 8) hardCount++; }
-        
-        const coach = clubMembers.find(u => u.role === 'coach');
-        
-        if(hardCount >= 3) {
-            pushNotification(`🚨 Alerte Fatigue : <strong>${currentUser.username}</strong> a signalé 3 séances difficiles (RPE ≥ 8) récemment.`);
-            if(coach && coach.profile.settings && !coach.profile.settings.autoMessageDisabled) {
-                db.collection('messages').add({ clubId: currentUser.clubId, senderId: coach.id, receiverId: currentUser.id, text: "Je vois que récemment tes séances étaient difficiles, est ce que tu es fort fatigué(e) ou les séances sont-elles un peu trop difficiles ?", date: Date.now() });
-            }
-        }
-
-        if(coach) {
-            let shouldNotify = false;
-            if(coach.profile && coach.profile.groups) {
-                coach.profile.groups.forEach(g => { if(g.notify && g.athletes.includes(currentUser.id)) shouldNotify = true; });
-            }
-            
-            if(shouldNotify) {
-                const pendingCount = clubAssignments.filter(x => x.athleteId === currentUser.id && !x.isDone).length;
-                pushNotification(`<strong>${currentUser.username}</strong> a terminé la séance <em>${s.name}</em>.`);
-                if (pendingCount === 1) pushNotification(`Il ne reste plus qu'<strong>une seule séance</strong> en attente pour ${currentUser.username}.`);
-                else if (pendingCount === 0) pushNotification(`<strong>${currentUser.username}</strong> a terminé toutes ses séances en attente !`);
-            }
-        }
-    }
-    closeModal('modal-view-session'); 
-}
-
 // --- ATHLETE PROFIL & AVATAR ---
 function renderAthleteProfile() {
     document.getElementById('profile-display-name').textContent = currentUser.username;
