@@ -15,7 +15,7 @@ const defaultCategories = ['Échauffement', 'Physique', 'Volume', 'Rési', 'Forc
 const themes1 = ["Dynamiques", "Statiques", "Talon", "Contre-Pointe", "Equilibre", "Gestes en dévers", "Opposition", "Compression", "Bacs", "Réglettes", "Pinces", "Bi-doigt"];
 const themes2 = ["Force bras", "Force doigts", "Endurance Phys.", "Souplesse", "Position pieds", "Position corps", "Coordination", "Gestion mentale", "Lecture", "En tête", "Endu. mentale"];
 
-// VARIABLES GLOBALES (Mises à jour en temps réel par Firebase)
+// VARIABLES GLOBALES
 let allClubs = [];
 let clubMembers = [];
 let clubBlocks = [];
@@ -31,11 +31,11 @@ let chartInstances = {};
 let currentMonth = new Date().getMonth(); let currentYear = new Date().getFullYear();
 let selectedDateForNote = null; let selectedUserIdForCalendar = null;
 let editingBlockId = null; let editingSessionId = null; let builderBlocks = [];
-let viewedAssignmentId = null;
+let viewedAssignmentId = null; // Déclarée UNE SEULE FOIS ici
 let currentSessionFilter = 'Toutes'; let coachBlockSearch = ''; let coachSessionSearch = ''; 
 let coachBlockFilter = 'Toutes'; let currentSessionLibraryTab = 'personal'; 
 let activeChatUserId = null; let editingGroupId = null;
-let isRegistering = false; // <-- NOUVEAU FLAG
+let isRegistering = false; 
 
 function getEmptyProfile() {
     let p = { objectives: '', avatar: null, skillsT1: {}, skillsT2: {}, calendar: {}, competitions: [], settings: { autoMessageDisabled: false }, groups: [] };
@@ -51,7 +51,7 @@ function initApp() {
     });
 
    auth.onAuthStateChanged(async user => {
-        if (isRegistering) return; // On ignore l'écouteur pendant la création du compte
+        if (isRegistering) return; 
 
         if (user) {
             try {
@@ -60,11 +60,10 @@ function initApp() {
                     
                     if (uSnap.exists) {
                         currentUser = uSnap.data();
-                        startRealtimeListeners(currentUser.clubId); // Magie du temps réel
+                        startRealtimeListeners(currentUser.clubId); 
                         document.getElementById('loader-screen').style.display = 'none';
                         showApp();
                     } else {
-                        // LE BUG ÉTAIT ICI : On déconnectait l'utilisateur sans cacher le loader
                         document.getElementById('loader-screen').style.display = 'none';
                         await auth.signOut();
                         alert("Profil introuvable. Votre compte a été mal créé. Veuillez vous réinscrire.");
@@ -77,7 +76,6 @@ function initApp() {
                     initAuthUI();
                 }
             } catch (error) {
-                // S'il y a la moindre erreur (ex: droits Firestore), on cache le loader pour ne pas bloquer l'app
                 document.getElementById('loader-screen').style.display = 'none';
                 await auth.signOut();
                 alert("Erreur de synchronisation : " + error.message);
@@ -89,15 +87,13 @@ function initApp() {
         }
     });
 }
-// LA MAGIE FIREBASE : Ces écouteurs mettent à jour l'app en temps réel dès qu'une donnée change sur le cloud
+
 let listeners = [];
 function startRealtimeListeners(clubId) {
-    // Nettoyer les anciens écouteurs si on change de compte
     listeners.forEach(unsub => unsub()); listeners = [];
 
     listeners.push(db.collection('users').where('clubId', '==', clubId).onSnapshot(snap => {
         clubMembers = snap.docs.map(d => d.data());
-        // Mise à jour de currentUser au cas où son propre profil a changé (avatar, etc.)
         const updatedMe = clubMembers.find(u => u.id === currentUser.id);
         if(updatedMe && !originalParentUser) currentUser = updatedMe; 
         refreshCurrentTab();
@@ -182,14 +178,12 @@ async function register() {
     } else if (!clubId) return alert("Sélectionnez un club.");
 
     document.getElementById('loader-screen').style.display = 'flex';
-    isRegistering = true; // On bloque la déconnexion automatique
+    isRegistering = true; 
 
     try {
-        // 1. Création du compte Firebase Auth (Firebase nous connecte automatiquement)
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const user = userCredential.user;
 
-        // 2. Maintenant qu'on est authentifié, Firebase nous autorise à créer le club !
         if (document.getElementById('reg-club').value === '_new_') {
             await db.collection('clubs').doc(clubId).set({ id: clubId, name: newClubName, categories: defaultCategories });
         }
@@ -207,10 +201,8 @@ async function register() {
             }
         }
         
-        // 3. On crée le profil utilisateur
         await db.collection('users').doc(newUser.id).set(newUser);
         
-        // 4. On envoie l'email, on déconnecte proprement et on enlève le drapeau
         await user.sendEmailVerification();
         await auth.signOut();
         isRegistering = false; 
@@ -219,7 +211,7 @@ async function register() {
         alert("Compte créé avec succès ! Un email de vérification vous a été envoyé. Veuillez cliquer sur le lien avant de vous connecter.");
         switchAuthTab('login');
     } catch (error) {
-        isRegistering = false; // En cas d'erreur, on réactive aussi l'écouteur
+        isRegistering = false; 
         document.getElementById('loader-screen').style.display = 'none';
         if (error.code === 'auth/email-already-in-use') alert("Cette adresse email est déjà utilisée.");
         else if (error.code === 'auth/weak-password') alert("Le mot de passe doit contenir au moins 6 caractères.");
@@ -495,7 +487,6 @@ function publishToClub(id) {
 }
 
 // --- ATTRIBUTION AVEC GROUPES ---
-let sessionToAssignId = null;
 function openAssignModal(sessId) {
     sessionToAssignId = sessId; 
     const pendingExist = clubAssignments.filter(a => a.sessionId === sessId && !a.isDone);
@@ -715,12 +706,9 @@ function viewSessionReadonly(assId) {
     document.getElementById('ro-val-note').textContent = a.annotation || 'Aucune note ou lien renseigné.';
     openModal('modal-view-session');
 }
+
 // --- ATHLETE : SESSIONS & EXECUTION ---
 
-// 1. Variable globale indispensable
-let viewedAssignmentId = null;
-
-// 2. Helpers RPE (Couleurs et Textes)
 function getRPEInfo(val) {
     const v = parseInt(val);
     if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' };
@@ -739,7 +727,6 @@ function updateRPEBadgeUI(inputEl) {
     }
 }
 
-// 3. Affichage des cartes de séances
 function renderAthleteSessions() {
     const myAss = clubAssignments.filter(a => a.athleteId === currentUser.id);
     const todo = myAss.filter(a => !a.isDone); 
@@ -759,7 +746,6 @@ function renderAthleteSessions() {
     document.getElementById('done-sessions-grid').innerHTML = done.map(renderCard).join('') || "<p style='color:var(--text-muted);'>Aucune séance réalisée.</p>";
 }
 
-// 4. Ouverture de la fenêtre de séance (qui bloquait)
 function openSessionAthlete(assId) {
     viewedAssignmentId = assId; 
     const a = clubAssignments.find(x => x.id === assId); 
@@ -816,11 +802,13 @@ function openSessionAthlete(assId) {
     }).join('');
     
     const btn = document.getElementById('btn-validate-session');
-    btn.textContent = a.isDone ? "Mettre à jour mon retour" : "✓ Marquer la séance comme terminée";
+    if (btn) {
+        btn.textContent = a.isDone ? "Mettre à jour mon retour" : "✓ Marquer la séance comme terminée";
+    }
     openModal('modal-view-session');
 }
 
-// 5. La fonction de validation manquante !
+// Fonction de validation (Maintenant sécurisée et liée au bouton)
 document.getElementById('btn-validate-session').onclick = async function() {
     if (!viewedAssignmentId) return;
     const a = clubAssignments.find(x => x.id === viewedAssignmentId);
@@ -860,6 +848,7 @@ document.getElementById('btn-validate-session').onclick = async function() {
     refreshCurrentTab();
     alert("Séance enregistrée avec succès !");
 };
+
 // --- ATHLETE PROFIL & AVATAR ---
 function renderAthleteProfile() {
     document.getElementById('profile-display-name').textContent = currentUser.username;
@@ -888,6 +877,7 @@ function renderAthleteProfile() {
     renderRadarChart('chart-t2-athlete', currentUser.profile.skillsT2, "Physique & Mental", 'rgba(239, 65, 53, 0.5)');
     selectedUserIdForCalendar = currentUser.id; renderCalendar('athlete-calendar-container');
 }
+
 async function saveProfileObjectives() { 
     currentUser.profile.objectives = document.getElementById('profile-objectives').value.trim(); 
     await db.collection('users').doc(currentUser.id).update({ 'profile.objectives': currentUser.profile.objectives });
