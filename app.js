@@ -715,27 +715,12 @@ function viewSessionReadonly(assId) {
     document.getElementById('ro-val-note').textContent = a.annotation || 'Aucune note ou lien renseigné.';
     openModal('modal-view-session');
 }
-// Helper pour générer la couleur et le texte du RPE
-function getRPEInfo(val) {
-    const v = parseInt(val);
-    if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' }; // Vert
-    if (v <= 5) return { text: `${v}/10 - Modéré`, color: '#3B82F6' };    // Bleu
-    if (v <= 7) return { text: `${v}/10 - Difficile`, color: '#F59E0B' };  // Orange
-    if (v <= 9) return { text: `${v}/10 - Très Dur (Rési)`, color: '#EF4135' }; // Rouge
-    return { text: '10/10 - Effort Maximal !', color: '#991B1B' };       // Rouge foncé
-}
-
-function updateRPEBadgeUI(inputEl) {
-    const info = getRPEInfo(inputEl.value);
-    const badge = inputEl.previousElementSibling.querySelector('.rpe-badge');
-    if (badge) {
-        badge.textContent = info.text;
-        badge.style.backgroundColor = info.color;
-    }
-}
 // --- ATHLETE : SESSIONS & EXECUTION ---
 
-// Helpers RPE (Couleurs et Textes)
+// 1. Variable globale indispensable
+let viewedAssignmentId = null;
+
+// 2. Helpers RPE (Couleurs et Textes)
 function getRPEInfo(val) {
     const v = parseInt(val);
     if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' };
@@ -747,13 +732,14 @@ function getRPEInfo(val) {
 
 function updateRPEBadgeUI(inputEl) {
     const info = getRPEInfo(inputEl.value);
-    const badge = inputEl.previousElementSibling ? inputEl.previousElementSibling.querySelector('.rpe-badge') : null;
+    const badge = inputEl.previousElementSibling.querySelector('.rpe-badge');
     if (badge) {
         badge.textContent = info.text;
         badge.style.backgroundColor = info.color;
     }
 }
 
+// 3. Affichage des cartes de séances
 function renderAthleteSessions() {
     const myAss = clubAssignments.filter(a => a.athleteId === currentUser.id);
     const todo = myAss.filter(a => !a.isDone); 
@@ -773,6 +759,7 @@ function renderAthleteSessions() {
     document.getElementById('done-sessions-grid').innerHTML = done.map(renderCard).join('') || "<p style='color:var(--text-muted);'>Aucune séance réalisée.</p>";
 }
 
+// 4. Ouverture de la fenêtre de séance (qui bloquait)
 function openSessionAthlete(assId) {
     viewedAssignmentId = assId; 
     const a = clubAssignments.find(x => x.id === assId); 
@@ -833,7 +820,7 @@ function openSessionAthlete(assId) {
     openModal('modal-view-session');
 }
 
-// Validation de la séance par l'athlète
+// 5. La fonction de validation manquante !
 document.getElementById('btn-validate-session').onclick = async function() {
     if (!viewedAssignmentId) return;
     const a = clubAssignments.find(x => x.id === viewedAssignmentId);
@@ -870,7 +857,8 @@ document.getElementById('btn-validate-session').onclick = async function() {
     });
 
     closeModal('modal-view-session');
-    alert("Séance enregistrée !");
+    refreshCurrentTab();
+    alert("Séance enregistrée avec succès !");
 };
 // --- ATHLETE PROFIL & AVATAR ---
 function renderAthleteProfile() {
