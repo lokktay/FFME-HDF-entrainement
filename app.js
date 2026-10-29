@@ -179,7 +179,7 @@ function startRealtimeListeners(clubId) {
             .collection('assignments')
             .where('clubId', '==', clubId)
             .onSnapshot(snap => {
-                clubAssignments = snap.docs.map(d => d.data());
+                clubAssignments = snap.docs.map(d => ({ ...d.data(), id: d.id }));
                 refreshCurrentTab();
             })
     );
@@ -876,6 +876,7 @@ function saveAssignments() {
     selectedIds.forEach(id => {
         const assRef = db.collection('assignments').doc('ass_' + Date.now() + Math.random().toString(36).substr(2, 9));
         batch.set(assRef, {
+            id: assRef.id,
             clubId: currentUser.clubId,
             sessionId: sessionToAssignId,
             athleteId: id,
