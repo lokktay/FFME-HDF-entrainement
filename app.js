@@ -87,6 +87,7 @@ function initApp() {
             initAuthUI();
         }
     });
+}
 // LA MAGIE FIREBASE : Ces écouteurs mettent à jour l'app en temps réel dès qu'une donnée change sur le cloud
 let listeners = [];
 function startRealtimeListeners(clubId) {
