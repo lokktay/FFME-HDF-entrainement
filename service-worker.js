@@ -1,38 +1,72 @@
-const CACHE_NAME = 'ffme-cache-auto-9';
+const CACHE_NAME = 'ffme-cache-v10'; // On change de version pour forcer la mise à jour
 const urlsToCache = [
-  './',
-  './index.html',
-  './styles.css',
-  './app.js'
+  '/',
+  '/index.html',
+  '/style.css',
+  '/app.js',
+  '/manifest.json'
 ];
 
-// Installation basique
+// 1. Installation du Service Worker
 self.addEventListener('install', event => {
-  self.skipWaiting(); // Force l'installation immédiate
+  self.skipWaiting(); // Force l'activation immédiate
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME)
+      .then(cache => {
+        return cache.addAll(urlsToCache);
+      })
   );
 });
 
+// 2. Nettoyage des anciens caches
 self.addEventListener('activate', event => {
-  self.clients.claim(); // Prend le contrôle immédiatement
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('Ancien cache supprimé :', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
 });
 
-// STRATÉGIE NETWORK-FIRST (L'automatisation magique)
+// 3. Interception des requêtes (La correction est ici !)
 self.addEventListener('fetch', event => {
+  // RÈGLE D'OR : On ignore toutes les requêtes POST, PUT, DELETE et les requêtes Firebase
+  if (
+      event.request.method !== 'GET' || 
+      event.request.url.includes('firestore.googleapis.com') || 
+      event.request.url.includes('identitytoolkit.googleapis.com') ||
+      event.request.url.includes('google.com')
+  ) {
+      return; // On laisse passer la requête normalement, sans y toucher
+  }
+
+  // Pour les autres requêtes (HTML, CSS, JS, images), on utilise le cache
   event.respondWith(
-    // 1. On tente d'abord de récupérer le fichier sur internet
-    fetch(event.request)
-      .then(networkResponse => {
-        // Si ça marche (l'utilisateur a du réseau), on met à jour le cache avec la nouvelle version
-        return caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, networkResponse.clone());
-          return networkResponse;
-        });
-      })
-      .catch(() => {
-        // 2. Si le fetch échoue (mode hors-ligne), on va piocher dans le cache
-        return caches.match(event.request);
+    caches.match(event.request)
+      .then(response => {
+        if (response) {
+          return response; // Trouvé dans le cache
+        }
+        return fetch(event.request).then(
+          function(networkResponse) {
+            // On ne met en cache que les réponses valides
+            if(!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+              return networkResponse;
+            }
+            var responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME)
+              .then(function(cache) {
+                cache.put(event.request, responseToCache);
+              });
+            return networkResponse;
+          }
+        );
       })
   );
 });
