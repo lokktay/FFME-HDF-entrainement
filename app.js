@@ -22,7 +22,7 @@ let clubBlocks = [];
 let clubSessions = [];
 let clubAssignments = [];
 let clubMessages = [];
-let clubNotifications = [];
+let clubNotifications = []; 
 
 let currentUser = null; 
 let originalParentUser = null; 
@@ -31,6 +31,7 @@ let chartInstances = {};
 let currentMonth = new Date().getMonth(); let currentYear = new Date().getFullYear();
 let selectedDateForNote = null; let selectedUserIdForCalendar = null;
 let editingBlockId = null; let editingSessionId = null; let builderBlocks = [];
+let viewedAssignmentId = null;
 let currentSessionFilter = 'Toutes'; let coachBlockSearch = ''; let coachSessionSearch = ''; 
 let coachBlockFilter = 'Toutes'; let currentSessionLibraryTab = 'personal'; 
 let activeChatUserId = null; let editingGroupId = null;
@@ -737,16 +738,16 @@ function updateRPEBadgeUI(inputEl) {
 // Helpers RPE (Couleurs et Textes)
 function getRPEInfo(val) {
     const v = parseInt(val);
-    if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' }; // Vert
-    if (v <= 5) return { text: `${v}/10 - Modéré`, color: '#3B82F6' };    // Bleu
-    if (v <= 7) return { text: `${v}/10 - Difficile`, color: '#F59E0B' };  // Orange
-    if (v <= 9) return { text: `${v}/10 - Très Dur (Rési)`, color: '#EF4135' }; // Rouge
-    return { text: '10/10 - Effort Maximal !', color: '#991B1B' };       // Rouge foncé
+    if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' };
+    if (v <= 5) return { text: `${v}/10 - Modéré`, color: '#3B82F6' };
+    if (v <= 7) return { text: `${v}/10 - Difficile`, color: '#F59E0B' };
+    if (v <= 9) return { text: `${v}/10 - Très Dur (Rési)`, color: '#EF4135' };
+    return { text: '10/10 - Effort Maximal !', color: '#991B1B' };
 }
 
 function updateRPEBadgeUI(inputEl) {
     const info = getRPEInfo(inputEl.value);
-    const badge = inputEl.previousElementSibling.querySelector('.rpe-badge');
+    const badge = inputEl.previousElementSibling ? inputEl.previousElementSibling.querySelector('.rpe-badge') : null;
     if (badge) {
         badge.textContent = info.text;
         badge.style.backgroundColor = info.color;
@@ -775,7 +776,9 @@ function renderAthleteSessions() {
 function openSessionAthlete(assId) {
     viewedAssignmentId = assId; 
     const a = clubAssignments.find(x => x.id === assId); 
+    if(!a) return;
     const s = clubSessions.find(x => x.id === a.sessionId);
+    if(!s) return;
     
     document.getElementById('view-session-title').textContent = s.name;
     document.getElementById('view-session-athlete-form').style.display = 'block';
@@ -829,6 +832,46 @@ function openSessionAthlete(assId) {
     btn.textContent = a.isDone ? "Mettre à jour mon retour" : "✓ Marquer la séance comme terminée";
     openModal('modal-view-session');
 }
+
+// Validation de la séance par l'athlète
+document.getElementById('btn-validate-session').onclick = async function() {
+    if (!viewedAssignmentId) return;
+    const a = clubAssignments.find(x => x.id === viewedAssignmentId);
+    if (!a) return;
+
+    const annotation = document.getElementById('session-annotation').value.trim();
+    const plaisir = parseInt(document.getElementById('session-plaisir').value) || 5;
+    const difficulte = parseInt(document.getElementById('session-difficulte').value) || 5;
+    const fatigue = parseInt(document.getElementById('session-fatigue').value) || 5;
+
+    let blockRpes = {};
+    let rpeSum = 0;
+    let rpeCount = 0;
+
+    document.querySelectorAll('.block-rpe-slider').forEach(input => {
+        const bId = input.dataset.blockid;
+        const val = parseInt(input.value) || 5;
+        blockRpes[bId] = val;
+        rpeSum += val;
+        rpeCount++;
+    });
+
+    const avgRpe = rpeCount > 0 ? (rpeSum / rpeCount) : difficulte;
+
+    await db.collection('assignments').doc(a.id).update({
+        isDone: true,
+        doneAt: Date.now(),
+        annotation: annotation,
+        plaisir: plaisir,
+        difficulte: difficulte,
+        fatigue: fatigue,
+        blockRpes: blockRpes,
+        avgRpe: avgRpe
+    });
+
+    closeModal('modal-view-session');
+    alert("Séance enregistrée !");
+};
 // --- ATHLETE PROFIL & AVATAR ---
 function renderAthleteProfile() {
     document.getElementById('profile-display-name').textContent = currentUser.username;
