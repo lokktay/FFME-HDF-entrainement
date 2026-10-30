@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ffme-cache-v10'; // On change de version pour forcer la mise à jour
+const CACHE_NAME = 'ffme-cache-v11'; // On change de version pour forcer la mise à jour
 const urlsToCache = [
   '/',
   '/index.html',
