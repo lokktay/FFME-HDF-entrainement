@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Plateforme Entraînement Escalade (Beta)</title>
+    <title>FFME - Entraînement Escalade</title>
     
     <!-- Bibliothèques externes -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -68,13 +68,7 @@
                     <label>Date de naissance</label>
                     <input type="date" class="form-control" id="reg-dob" onchange="checkDobForParentCode()">
                 </div>
-                <div class="form-group">
-                    <label>Rôle</label>
-                    <select class="form-control" id="reg-role">
-                        <option value="athlete">Athlète</option>
-                        <option value="coach">Coach</option>
-                    </select>
-                </div>
+                <p class="form-hint">Votre compte sera créé avec le rôle Athlète. Le gérant du club pourra ensuite modifier votre rôle.</p>
                 <div class="form-group">
                     <label>Club</label>
                     <select class="form-control" id="reg-club" onchange="checkNewClubAuth(this)"></select>
@@ -96,7 +90,7 @@
     <div id="app-content">
         <header>
             <div class="header-left">
-                <h1>FFME</h1>
+                <h1>HDF Training</h1>
                 <div class="user-info" onclick="toggleAccountMenu()">
                     <span id="header-user-info-text">👤 Pseudo</span>
                     <div id="account-dropdown" class="account-dropdown"></div>
@@ -110,6 +104,8 @@
                 
                 <!-- Athlete Tabs -->
                 <button id="nav-athlete-sessions" onclick="switchTab('athlete-sessions')">Mes Séances</button>
+                <button id="nav-athlete-club-members" class="athlete-only" onclick="switchTab('athlete-club-members')">Membres du Club</button>
+                <button id="nav-athlete-club-sessions" class="athlete-only" onclick="switchTab('athlete-club-sessions')">Séances du Club</button>
                 <button id="nav-athlete-profile" onclick="switchTab('athlete-profile')">Mon Profil</button>
                 
                 <button id="btn-logout" class="btn-outline" style="margin-left: auto;" onclick="logout()">Déconnexion</button>
@@ -175,7 +171,7 @@
             <div id="coach-sessions-grid" class="grid" style="margin-bottom: 3.5rem;"></div>
             <hr>
             <div class="flex-between" style="margin-bottom: 1.5rem;">
-                <h3 class="section-title" style="font-size: 1.3rem;">Ressources : Exercices & Blocs</h3>
+                <h3 class="section-title" style="font-size: 1.3rem;">Ressources : Mes Exercices & Blocs (Personnels)</h3>
                 <input type="text" id="search-blocks" class="search-bar" placeholder="Rechercher un bloc..." onkeyup="updateCoachBlockSearch(this.value)">
             </div>
             <div id="coach-dashboard-filters" class="filter-tags"></div>
@@ -188,14 +184,23 @@
         <main id="coach-athletes-space" class="tab-content">
             <div class="flex-between" style="margin-bottom: 2rem;">
                 <h2 class="section-title">Membres du Club</h2>
-                <button class="btn-outline" onclick="openManageGroupsModal()">Gérer mes groupes</button>
+                <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                    <button class="btn-outline" onclick="openManageGroupsModal()">Gérer mes groupes</button>
+                </div>
             </div>
             
             <div id="coach-groups-view" class="grid"></div>
+            <input id="club-avatar-input" type="file" accept="image/*" class="avatar-input" onchange="handleClubAvatarUpload(event)">
             
             <div id="coach-athletes-view" style="display:none;">
                 <button class="btn-outline" style="margin-bottom: 1.5rem;" onclick="backToGroupsView()">⬅ Retour aux groupes</button>
-                <h3 id="current-group-title" style="margin-top:0; margin-bottom: 1.5rem; font-size:1.3rem; color:var(--ffme-blue-dark);"></h3>
+                <div class="group-view-heading">
+                    <h3 id="current-group-title" style="margin-top:0; margin-bottom:0; font-size:1.3rem; color:var(--ffme-blue-dark);"></h3>
+                    <label id="group-view-notify-control" class="group-view-notify" style="display:none;">
+                        <input id="group-view-notify-checkbox" type="checkbox" onchange="handleGroupNotificationToggle(this)">
+                        <span>Activer les notifications</span>
+                    </label>
+                </div>
                 <div id="coach-athletes-grid" class="grid"></div>
             </div>
         </main>
@@ -210,6 +215,23 @@
             <div id="done-sessions-grid" class="grid" style="opacity: 0.9;"></div>
         </main>
 
+        <main id="athlete-club-members-space" class="tab-content">
+            <div class="flex-between">
+                <h2 class="section-title">Membres de <span id="athlete-club-members-title"></span></h2>
+                <input id="athlete-club-members-search" class="search-bar" type="search" placeholder="Rechercher un membre..." oninput="updateAthleteClubMemberSearch(this.value)">
+            </div>
+            <div id="athlete-club-members-grid" class="grid"></div>
+        </main>
+
+        <main id="athlete-club-sessions-space" class="tab-content">
+            <div class="flex-between">
+                <h2 class="section-title">Séances du Club</h2>
+                <input id="athlete-club-sessions-search" class="search-bar" type="search" placeholder="Rechercher une séance..." oninput="updateAthleteClubSessionSearch(this.value)">
+            </div>
+            <p class="section-description">Séances partagées par les coachs et les gérants de votre club.</p>
+            <div id="athlete-club-sessions-grid" class="grid"></div>
+        </main>
+
         <!-- ============================================== -->
         <!-- [ATHLETE] PROFILE -->
         <!-- ============================================== -->
@@ -222,6 +244,7 @@
                     <label for="profile-avatar-input" class="avatar-upload-btn">Modifier</label>
                     <input type="file" id="profile-avatar-input" class="avatar-input" accept="image/*" onchange="handleAvatarUpload(event)">
                 </div>
+
                 <div style="flex: 1; width: 100%;">
                     <h3 style="margin-bottom: 0.25rem; font-size: 1.3rem; color: var(--ffme-blue); font-weight: 800;" id="profile-display-name">Mon Profil</h3>
                     <div id="profile-parent-code-display"></div>
@@ -233,6 +256,46 @@
                     </div>
                     <div id="profile-linked-children-list" style="margin-top: 1rem; font-size:0.85rem; display:flex; gap:0.5rem; flex-wrap:wrap;"></div>
                 </div>
+            </div>
+
+            <div class="profile-section">
+            <h3>Mes clubs</h3>
+            <div id="profile-clubs-list"></div>
+            <div class="club-management-panel">
+                <div class="club-management-heading">
+                    <span class="club-panel-icon" aria-hidden="true">＋</span>
+                    <div>
+                        <strong>Gérer mes clubs</strong>
+                        <p>Rejoignez un club existant ou créez le vôtre.</p>
+                    </div>
+                </div>
+                <div class="club-management-controls">
+                    <label class="club-select-wrap">
+                        <span class="sr-only">Choisir un club à rejoindre ou en créer un</span>
+                        <select id="available-clubs-select" class="form-control club-select" onchange="handleAvailableClubChange()"></select>
+                    </label>
+                    <button id="join-club-submit" class="btn-primary" onclick="joinClub()">Rejoindre le club</button>
+                </div>
+                <div id="create-club-controls" class="club-management-controls club-create-controls" style="display:none;">
+                    <label class="sr-only" for="new-club-name">Nom du nouveau club</label>
+                    <input id="new-club-name" class="form-control" type="text" maxlength="80" placeholder="Nom du nouveau club">
+                    <button id="create-club-submit" class="btn-primary" onclick="createClub()">Créer le club</button>
+                </div>
+                <p class="club-create-hint">En créant ce club, vous en deviendrez automatiquement le gérant.</p>
+            </div>
+            </div>
+
+            <div id="role-request-section" class="profile-section">
+                <h3>Demander un rôle</h3>
+                <p>Votre demande sera envoyée aux gérants du club actif.</p>
+                <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                    <select id="role-request-select" class="form-control" style="max-width:320px;">
+                        <option value="coach">Coach</option>
+                        <option value="gerant">Gérant du club</option>
+                    </select>
+                    <button id="role-request-submit" class="btn-primary" onclick="submitRoleRequest()">Envoyer la demande</button>
+                </div>
+                <div id="role-request-status" style="margin-top:0.75rem;"></div>
             </div>
             
             <div class="profile-section">
@@ -273,19 +336,47 @@
     </div>
 
     <div id="modal-manage-groups" class="modal-overlay">
-        <div class="modal">
-            <div class="modal-header"><h2>Gérer mes groupes</h2><button class="close-btn" onclick="closeModal('modal-manage-groups')">&times;</button></div>
-            <div class="form-group"><label>Nom du groupe</label><input type="text" id="new-group-name" class="form-control" placeholder="Ex: Groupe Compétition..."></div>
-            <label style="display:flex; align-items:center; gap:0.5rem; font-weight:600; font-size:0.9rem; margin-bottom:1rem; cursor:pointer;"><input type="checkbox" id="new-group-notify" style="width:1.2rem; height:1.2rem; accent-color:var(--ffme-blue);">🔔 Activer les alertes de suivi pour ce groupe</label>
-            <label style="font-weight:600; font-size:0.9rem; margin-bottom:0.5rem; display:block;">Sélectionner les membres :</label>
-            <div id="new-group-athletes" style="max-height: 200px; overflow-y:auto; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md); margin-bottom:1rem; border:1px solid var(--border-color);"></div>
-            <button id="btn-save-group" class="btn-primary" style="width:100%; margin-bottom: 2rem;" onclick="saveNewGroup()">Créer le groupe</button>
-            <h3 style="border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">Mes groupes existants</h3><div id="existing-groups-list"></div>
+        <div class="modal modal-large group-management-modal">
+            <div class="modal-header"><div><h2 id="manage-groups-title">Gérer mes groupes</h2><p class="group-modal-subtitle">Créez des groupes et sélectionnez les membres du club.</p></div><button class="close-btn" onclick="closeModal('modal-manage-groups')">&times;</button></div>
+            <div id="group-editing-banner" class="group-editing-banner" style="display:none;">✏️ Vous modifiez le groupe <strong id="group-editing-name"></strong></div>
+            <div class="group-editor-layout">
+                <section id="group-editor-panel" class="group-editor-panel">
+                    <div class="group-editor-heading">
+                        <div><h3 id="group-editor-title">Créer un groupe</h3><p>Donnez un nom au groupe et choisissez ses membres.</p></div>
+                        <button id="btn-cancel-group-edit" class="btn-outline" style="display:none;" onclick="cancelGroupEdit()">Annuler la modification</button>
+                    </div>
+                    <div class="form-group"><label for="new-group-name">Nom du groupe</label><input type="text" id="new-group-name" class="form-control" placeholder="Ex. Groupe Compétition..."></div>
+                    <div class="group-avatar-editor">
+                        <div id="group-avatar-preview" class="group-avatar-preview" aria-label="Aperçu de la photo du groupe"></div>
+                        <div class="group-avatar-actions">
+                            <strong>Photo du groupe</strong>
+                            <span>Ajoutez une image pour personnaliser sa carte.</span>
+                            <div>
+                                <button class="btn-outline group-avatar-upload" type="button" onclick="document.getElementById('group-avatar-input').click()">Choisir une photo</button>
+                                <input id="group-avatar-input" class="avatar-input" type="file" accept="image/*" onchange="handleGroupAvatarUpload(event)">
+                                <button id="group-avatar-remove" class="btn-text" type="button" onclick="removeGroupAvatar()" style="display:none;">Supprimer</button>
+                            </div>
+                        </div>
+                    </div>
+                    <label class="group-notify-option"><input type="checkbox" id="new-group-notify"> <span>🔔 Activer les alertes de suivi pour ce groupe</span></label>
+                    <div class="group-member-picker-heading">
+                        <div><label for="group-member-search">Membres du groupe</label><span id="group-member-count" class="group-member-count"></span></div>
+                        <input id="group-member-search" class="form-control group-member-search" type="search" placeholder="Rechercher un membre…" oninput="renderGroupMemberPicker()">
+                    </div>
+                    <div id="new-group-athletes" class="group-member-picker"></div>
+                    <button id="btn-save-group" class="btn-primary group-save-button" onclick="saveNewGroup()">Créer le groupe</button>
+                </section>
+                <aside class="group-existing-panel">
+                    <h3>Groupes existants</h3>
+                    <p>Choisissez un groupe pour le modifier.</p>
+                    <div id="existing-groups-list"></div>
+                </aside>
+            </div>
         </div>
     </div>
 
     <div id="modal-link-child" class="modal-overlay"><div class="modal" style="max-width:400px;"><div class="modal-header"><h2>Lier un compte enfant</h2><button class="close-btn" onclick="closeModal('modal-link-child')">&times;</button></div><div class="form-group"><label>Code Parent :</label><input type="text" id="input-link-child" class="form-control" placeholder="Ex: 14675"></div><button class="btn-primary" style="width:100%" onclick="linkChildAccount()">Lier le compte</button></div></div>
-    <div id="modal-competition" class="modal-overlay"><div class="modal" style="max-width:400px;"><div class="modal-header"><h2>Ajouter une compétition</h2><button class="close-btn" onclick="closeModal('modal-competition')">&times;</button></div><div class="form-group"><label>Type</label><input type="text" id="comp-type" class="form-control"></div><div class="form-group"><label>Place</label><input type="text" id="comp-place" class="form-control"></div><div class="form-group"><label>Ressenti</label><textarea id="comp-feeling" class="form-control"></textarea></div><button class="btn-primary" style="width:100%" onclick="saveCompetition()">Ajouter</button></div></div>
+    <div id="modal-competition" class="modal-overlay"><div class="modal" style="max-width:400px;"><div class="modal-header"><h2 id="modal-comp-title-text">Ajouter une compétition</h2><button class="close-btn" onclick="closeModal('modal-competition')">&times;</button></div><div class="form-group"><label>Type</label><input type="text" id="comp-type" class="form-control" placeholder="Ex: Championnat Régional"></div><div class="form-group"><label>Place / Résultat</label><input type="text" id="comp-place" class="form-control" placeholder="Ex: 3ème"></div><div class="form-group"><label>Ressenti</label><textarea id="comp-feeling" class="form-control" placeholder="Sensations, points forts, axes d'amélioration..."></textarea></div><button class="btn-primary" style="width:100%" onclick="saveCompetition()">Enregistrer</button></div></div>
     <div id="modal-coach-settings" class="modal-overlay"><div class="modal" style="max-width:450px;"><div class="modal-header"><h2>Paramètres Coach</h2><button class="close-btn" onclick="closeModal('modal-coach-settings')">&times;</button></div><label style="display:flex; align-items:center; gap:0.75rem; font-weight:600; cursor:pointer;"><input type="checkbox" id="coach-setting-automessage" style="width:1.2rem; height:1.2rem; accent-color:var(--ffme-blue);"> Désactiver l'envoi auto du message d'alerte fatigue</label><button class="btn-primary" style="width:100%; margin-top:1.5rem;" onclick="saveCoachSettings()">Enregistrer</button></div></div>
 
     <!-- MODALS CLASSIQUES : Blocs, Builder, etc. -->
@@ -343,7 +434,7 @@
             <div id="view-session-coach-readonly" style="display:none;">
                 <div id="view-session-content-coach" style="max-height:45vh; overflow-y:auto; padding-right: 0.5rem; margin-bottom:1rem;"></div>
                 
-                <div style="background:var(--surface); padding:2rem; border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
+                <div id="view-session-coach-report" style="background:var(--surface); padding:2rem; border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
                     <h3 style="margin-top:0; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">Bilan de l'athlète</h3>
                     <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; margin-bottom:1.5rem; text-align:center;">
                         <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);">
@@ -367,11 +458,20 @@
     </div>
     
     <!-- MODAL : VUE COACH SUR ATHLETE -->
-    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div></div><div id="coach-ath-view-historique" style="display:none;"><div id="coach-ath-history-list" class="grid"></div></div></div></div>
+    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div id="view-athlete-role-control" class="profile-section" style="display:none;"><h3>Rôle dans le club</h3><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><select id="view-athlete-role" class="form-control" style="max-width:320px;"><option value="athlete">Athlète</option><option value="coach">Coach</option><option value="gerant">Gérant du club</option></select><button class="btn-primary" onclick="updateClubMemberRole()">Enregistrer le rôle</button></div></div><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div></div><div id="coach-ath-view-historique" style="display:none;"><section class="coach-history-section"><h3>Séances en cours</h3><div id="coach-ath-current-sessions" class="grid"></div></section><section class="coach-history-section"><h3>Séances réalisées</h3><div id="coach-ath-history-list" class="grid"></div></section></div></div></div>
 
     <!-- Modals Skills & Calendar -->
-    <div id="modal-skills" class="modal-overlay" style="z-index:1050;"><div class="modal modal-large"><div class="modal-header"><h2 style="font-size:1.5rem;">Auto-évaluation (0 à 10)</h2><button class="close-btn" onclick="closeModal('modal-skills')">&times;</button></div><div style="display: flex; gap: 2rem; flex-wrap:wrap;"><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-blue); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Technique & Gestuelle</h3><div id="skills-form-t1" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-red); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Physique & Mental</h3><div id="skills-form-t2" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div></div><button class="btn-primary" style="width:100%; margin-top:2rem; padding:1.25rem; font-size:1.15rem;" onclick="saveSkills()">Enregistrer</button></div></div>
+    <div id="modal-skills" class="modal-overlay" style="z-index:1050;"><div class="modal modal-large"><div class="modal-header"><h2 style="font-size:1.5rem;">Auto-évaluation (0 à 10)</h2><button class="close-btn" onclick="closeModal('modal-skills')">&times;</button></div><div style="display: flex; gap: 2rem; flex-wrap:wrap;"><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-blue); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Technique & Gestuelle</h3><div id="skills-form-t1" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--danger); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Physique & Mental</h3><div id="skills-form-t2" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div></div><button class="btn-primary" style="width:100%; margin-top:2rem; padding:1.25rem; font-size:1.15rem;" onclick="saveSkills()">Enregistrer</button></div></div>
     <div id="modal-calendar-note" class="modal-overlay" style="z-index: 1050;"><div class="modal" style="max-width: 480px;"><div class="modal-header"><h3 id="cal-note-date" style="margin:0; font-size: 1.35rem; color:var(--ffme-blue-dark);">Date</h3><button class="close-btn" onclick="closeModal('modal-calendar-note')">&times;</button></div><div class="form-group"><label>Statut pour ce jour :</label><select id="cal-note-status" class="form-control"><option value="false">Repos</option><option value="true">Entraînement</option></select></div><div class="form-group"><label>Lier à une séance :</label><select id="cal-note-session" class="form-control"></select></div><div class="form-group"><label>Note libre :</label><input type="text" id="cal-note-text" class="form-control"></div><button class="btn-primary" style="width:100%; margin-top:1rem; padding:1rem;" onclick="saveCalendarNote()">Valider</button></div></div>
+
+    <div id="app-dialog-overlay" class="app-dialog-overlay" style="display:none;" onclick="handleAppDialogBackdrop(event)">
+        <section class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
+            <div class="app-dialog-icon" id="app-dialog-icon" aria-hidden="true">ℹ</div>
+            <h2 id="app-dialog-title">Information</h2>
+            <p id="app-dialog-message"></p>
+            <div id="app-dialog-actions" class="app-dialog-actions"></div>
+        </section>
+    </div>
 
     <!-- Lien vers le fichier JavaScript -->
     <script src="app.js"></script>
