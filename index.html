@@ -131,6 +131,17 @@
                     <button id="admin-refresh" class="btn-primary" type="button" onclick="loadAdminMetrics()">Actualiser</button>
                 </div>
             </div>
+            <section class="admin-panel">
+                <h3>Gestion des clubs</h3>
+                <div class="admin-period-controls">
+                    <label for="admin-club-select">Club</label>
+                    <select id="admin-club-select" class="form-control">
+                        <option value="">Choisir un club</option>
+                    </select>
+                    <button class="btn-primary" type="button" onclick="openAdminManagedClub()">Gérer le club</button>
+                </div>
+                <p class="admin-data-note">Accès gérant temporaire : aucune adhésion ni entrée dans l’annuaire du club n’est créée.</p>
+            </section>
             <p id="admin-metrics-status" class="admin-metrics-status" role="status" aria-live="polite"></p>
             <div id="admin-metrics-cards" class="admin-metrics-cards"></div>
             <section class="admin-panel">
@@ -289,6 +300,7 @@
                     <textarea id="profile-objectives" class="form-control" style="min-height: 60px; margin-bottom: 0.75rem;"></textarea>
                     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                         <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="saveProfileObjectives()">Enregistrer</button>
+                        <button id="profile-admin-entry" class="btn-outline" style="display:none; padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="switchTab('platform-admin')">Administration</button>
                         <button class="btn-outline" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="openLinkChildModal()" id="btn-link-child" style="display:none;">+ Lier un enfant</button>
                     </div>
                     <div id="profile-linked-children-list" style="margin-top: 1rem; font-size:0.85rem; display:flex; gap:0.5rem; flex-wrap:wrap;"></div>

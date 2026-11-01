@@ -30,6 +30,8 @@ let originalParentUser = null;
 let chartInstances = {}; 
 let adminUsageChart = null;
 let adminMetricsGeneration = 0;
+let adminManagedClubId = null;
+let adminReturnClubId = null;
 
 let currentMonth = new Date().getMonth(); let currentYear = new Date().getFullYear();
 let selectedDateForNote = null; let selectedUserIdForCalendar = null;
@@ -135,6 +137,15 @@ function getUserClubIds(user = currentUser) {
     const clubIds = Array.isArray(user.clubIds) ? [...user.clubIds] : [];
     if(user.clubId && !clubIds.includes(user.clubId)) clubIds.unshift(user.clubId);
     return [...new Set(clubIds)];
+}
+
+function isCurrentUserMemberOfClub(clubId) {
+    if(adminManagedClubId && currentUser && currentUser.id === auth.currentUser?.uid) {
+        const clubIds = Array.isArray(currentUser.clubIds) ? [...currentUser.clubIds] : [];
+        if(adminReturnClubId && !clubIds.includes(adminReturnClubId)) clubIds.push(adminReturnClubId);
+        return clubIds.includes(clubId);
+    }
+    return getUserClubIds().includes(clubId);
 }
 
 async function recordLoginUsageEvent() {
@@ -474,6 +485,7 @@ async function removeParentChildLink(parentId, childId) {
 
 function getClubRole(user = currentUser, clubId = currentUser && currentUser.clubId) {
     if(!user || !clubId) return 'athlete';
+    if(isVirtualAdminManager(user, clubId)) return 'gerant';
     if(originalParentUser && user.id === currentUser.id) return 'athlete';
     const club = allClubs.find(item => item.id === clubId);
     if(club && Array.isArray(club.managerIds) && club.managerIds.includes(user.id)) return 'gerant';
@@ -491,8 +503,12 @@ function isPlatformAdmin(user = currentUser) {
     return Boolean(user && user.isPlatformAdmin);
 }
 
+function isVirtualAdminManager(user = currentUser, clubId = currentUser && currentUser.clubId) {
+    return Boolean(isPlatformAdmin(user) && adminManagedClubId && adminManagedClubId === clubId);
+}
+
 function isClubManager(user = currentUser, clubId = currentUser && currentUser.clubId) {
-    return getClubRole(user, clubId) === 'gerant';
+    return isVirtualAdminManager(user, clubId) || getClubRole(user, clubId) === 'gerant';
 }
 
 function canManageClubSession(session) {
@@ -627,11 +643,15 @@ async function updateClubMemberRole(memberId) {
             role
         });
         if(role === 'gerant') {
+            const managerIdsToAdd = isVirtualAdminManager() ? [memberId] : [currentUser.id, memberId];
             batch.update(db.collection('clubs').doc(currentUser.clubId), {
-                managerIds: firebase.firestore.FieldValue.arrayUnion(currentUser.id, memberId)
+                managerIds: firebase.firestore.FieldValue.arrayUnion(...managerIdsToAdd)
             });
         } else if(oldRole === 'gerant') {
-            const managerIds = [...new Set([...(getMyClubObj().managerIds || []), currentUser.id])]
+            const managerIds = [...new Set([
+                ...(getMyClubObj().managerIds || []),
+                ...(!isVirtualAdminManager() ? [currentUser.id] : [])
+            ])]
                 .filter(id => id !== memberId);
             batch.update(db.collection('clubs').doc(currentUser.clubId), {
                 managerIds
@@ -670,8 +690,9 @@ async function resolveRoleRequest(requestId, status) {
                 role: request.requestedRole
             });
             if(request.requestedRole === 'gerant') {
+                const managerIdsToAdd = isVirtualAdminManager() ? [member.id] : [currentUser.id, member.id];
                 batch.update(db.collection('clubs').doc(currentUser.clubId), {
-                    managerIds: firebase.firestore.FieldValue.arrayUnion(currentUser.id, member.id)
+                    managerIds: firebase.firestore.FieldValue.arrayUnion(...managerIdsToAdd)
                 });
             }
         }
@@ -824,23 +845,6 @@ async function startAuthenticatedSession(user) {
         }
 
         const tokenResult = await user.getIdTokenResult(true);
-        if(tokenResult.claims.admin === true) {
-            stopRealtimeListeners();
-            currentUser = {
-                id: user.uid,
-                username: 'Administration',
-                role: 'admin',
-                isPlatformAdmin: true
-            };
-            originalParentUser = null;
-            linkedChildIds = [];
-            linkedParentIds = [];
-            currentUserParentCode = null;
-            document.getElementById('loader-screen').style.display = 'none';
-            showApp();
-            return;
-        }
-
         const userSnapshot = await db.collection('users').doc(user.uid).get();
         if(!userSnapshot.exists) {
             document.getElementById('loader-screen').style.display = 'none';
@@ -851,6 +855,7 @@ async function startAuthenticatedSession(user) {
         }
 
         currentUser = await migrateLegacyPrivateData({ ...userSnapshot.data(), id: userSnapshot.id });
+        currentUser.isPlatformAdmin = tokenResult.claims.admin === true;
         await syncClubDirectory(currentUser);
         await recordLoginUsageEvent();
         currentUserParentCode = null;
@@ -896,6 +901,8 @@ async function startAuthenticatedSession(user) {
         document.getElementById('loader-screen').style.display = 'none';
         stopRealtimeListeners();
         currentUser = null;
+        adminManagedClubId = null;
+        adminReturnClubId = null;
         originalParentUser = null;
         linkedChildIds = [];
         linkedParentIds = [];
@@ -1106,7 +1113,9 @@ function startRealtimeListeners(clubId) {
         [...legacyMembers, ...multiClubMembers].forEach(member => {
             membersById.set(member.id, { ...membersById.get(member.id), ...member });
         });
-        if(currentUser) membersById.set(currentUser.id, { ...membersById.get(currentUser.id), ...currentUser });
+        if(currentUser && isCurrentUserMemberOfClub(clubId)) {
+            membersById.set(currentUser.id, { ...membersById.get(currentUser.id), ...currentUser });
+        }
         clubMembers = [...membersById.values()];
         const updatedMe = clubMembers.find(u => u.id === currentUser.id);
         if(updatedMe && !originalParentUser) {
@@ -1442,6 +1451,7 @@ async function loadAdminMetrics() {
             : await getAdminUsageEvents(recentStart, recentEnd);
         if(generation !== adminMetricsGeneration || !isPlatformAdmin()) return;
         allClubs = clubsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        renderAdminClubSelect();
         renderAdminMetrics(period, events, recentEvents);
         status.textContent = `${events.length} événements agrégés chargés. Historique suivi à partir du déploiement.` +
             (typeof Chart === 'undefined' ? " Le graphique est indisponible (bibliothèque non chargée)." : '');
@@ -1452,6 +1462,36 @@ async function loadAdminMetrics() {
     } finally {
         if(generation === adminMetricsGeneration) refreshButton.disabled = false;
     }
+}
+
+function renderAdminClubSelect() {
+    const select = document.getElementById('admin-club-select');
+    if(!select) return;
+    const previousValue = select.value;
+    select.replaceChildren(new Option('Choisir un club', ''));
+    [...allClubs].sort((first, second) => (first.name || '').localeCompare(second.name || '', 'fr'))
+        .forEach(club => select.add(new Option(club.name || 'Club sans nom', club.id)));
+    if(allClubs.some(club => club.id === previousValue)) select.value = previousValue;
+}
+
+function openAdminManagedClub() {
+    if(!isPlatformAdmin() || !currentUser || adminManagedClubId) return;
+    const clubId = document.getElementById('admin-club-select').value;
+    if(!allClubs.some(club => club.id === clubId)) return alert('Sélectionnez un club valide.');
+    adminReturnClubId = currentUser.clubId || null;
+    adminManagedClubId = clubId;
+    currentUser = { ...currentUser, clubId };
+    startRealtimeListeners(clubId);
+    showApp();
+}
+
+function leaveAdminManagedClub() {
+    if(!adminManagedClubId || !currentUser) return;
+    const returnClubId = adminReturnClubId;
+    adminManagedClubId = null;
+    adminReturnClubId = null;
+    currentUser = { ...currentUser, clubId: returnClubId };
+    startRealtimeListeners(returnClubId);
 }
 
 function updateAuthClubList() {
@@ -1622,6 +1662,8 @@ async function logout() {
     try {
         await auth.signOut();
         currentUser = null;
+        adminManagedClubId = null;
+        adminReturnClubId = null;
         originalParentUser = null;
         linkedChildIds = [];
         linkedParentIds = [];
@@ -1648,6 +1690,7 @@ function toggleAccountMenu() {
     dd.innerHTML = html; dd.style.display = 'block';
 }
 async function switchAccount(targetId) {
+    if(adminManagedClubId) leaveAdminManagedClub();
     const parentUser = originalParentUser || currentUser;
     if(targetId === parentUser.id) {
         if(!originalParentUser) return;
@@ -1709,23 +1752,7 @@ function showApp() {
     document.getElementById('app-content').style.display = 'block';
     const adminNav = document.getElementById('nav-platform-admin');
     const chatButton = document.querySelector('.chat-btn-float');
-    if(isPlatformAdmin()) {
-        document.getElementById('header-user-info-text').innerHTML = '🔐 Administration';
-        document.querySelectorAll('#main-nav button:not(#btn-logout)').forEach(button => button.style.display = 'none');
-        adminNav.style.display = 'inline-block';
-        if(chatButton) chatButton.style.display = 'none';
-        const now = new Date();
-        document.getElementById('admin-period-month').value =
-            `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        document.getElementById('admin-period-year').value = String(now.getFullYear());
-        document.getElementById('admin-period-mode').value = 'month';
-        document.getElementById('admin-period-month').style.display = '';
-        document.getElementById('admin-period-year').style.display = 'none';
-        switchTab('platform-admin');
-        return;
-    }
-
-    adminNav.style.display = 'none';
+    adminNav.style.display = isPlatformAdmin() ? 'inline-block' : 'none';
     if(chatButton) chatButton.style.display = '';
     document.querySelectorAll('#main-nav button:not(#btn-logout)').forEach(button => button.style.display = '');
     const activeRole = getClubRole();
@@ -1751,7 +1778,9 @@ function showApp() {
 }
 function switchTab(tab) {
     if(tab === 'platform-admin' && !isPlatformAdmin()) return;
-    if(isPlatformAdmin() && tab !== 'platform-admin') return;
+    if(adminManagedClubId && !['coach-dashboard', 'coach-athletes'].includes(tab)) {
+        leaveAdminManagedClub();
+    }
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
     const target = document.getElementById(tab + '-space');
@@ -1759,6 +1788,17 @@ function switchTab(tab) {
     target.classList.add('active');
     const navBtn = document.getElementById('nav-' + tab); if(navBtn) navBtn.classList.add('active');
     if(tab === 'platform-admin') {
+        const now = new Date();
+        if(!document.getElementById('admin-period-month').value) {
+            document.getElementById('admin-period-month').value =
+                `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        }
+        if(!document.getElementById('admin-period-year').value) {
+            document.getElementById('admin-period-year').value = String(now.getFullYear());
+        }
+        document.getElementById('admin-period-mode').value = 'month';
+        document.getElementById('admin-period-month').style.display = '';
+        document.getElementById('admin-period-year').style.display = 'none';
         loadAdminMetrics();
         return;
     }
@@ -3211,6 +3251,11 @@ document.getElementById('btn-validate-session').onclick = async function() {
 function renderAthleteProfile() {
     document.getElementById('profile-display-name').textContent = currentUser.username;
     document.getElementById('profile-objectives').value = currentUser.profile.objectives || '';
+    const adminEntry = document.getElementById('profile-admin-entry');
+    if(adminEntry) {
+        adminEntry.style.display = isPlatformAdmin() && !originalParentUser &&
+            auth.currentUser && auth.currentUser.uid === currentUser.id ? 'inline-block' : 'none';
+    }
     
     const pre = document.getElementById('profile-avatar-preview');
     const pla = document.getElementById('profile-avatar-placeholder');

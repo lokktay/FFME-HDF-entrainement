@@ -96,8 +96,9 @@ Si la commande répond `PERMISSION_DENIED`, votre compte Google n’a probableme
 1. Ouvrez la nouvelle version du site.
 2. Déconnectez-vous si un compte est déjà connecté.
 3. Connectez-vous avec l’adresse e-mail et le mot de passe du compte admin. Utilisez l’adresse e-mail vérifiée.
-4. Vous devez voir la page **Administration** et ses indicateurs. Le compte admin n’est ajouté à aucun club.
-5. Ouvrez le sélecteur de période pour consulter un mois ou une année. Le tableau présente les comptes actifs, les séances créées et les séances réalisées pour chaque club.
+4. Le compte conserve son profil et ses appartenances habituelles. Dans **Mon Profil**, le bouton **Administration** apparaît si le claim `admin: true` a bien été attribué au compte connecté.
+5. Dans l’interface d’administration, le tableau présente les indicateurs par club. La section **Gestion des clubs** permet d’ouvrir les vues de gérant d’un club sans ajouter le compte admin à ses membres ni à son annuaire. Seules les appartenances déjà présentes dans le profil classique restent visibles.
+6. Ouvrez le sélecteur de période pour consulter un mois ou une année.
 
 Si le bouton n’apparaît pas, déconnectez-vous complètement et reconnectez-vous : les droits Firebase sont enregistrés dans un jeton qui doit être renouvelé. Vérifiez aussi que le claim a été ajouté au bon UID et que vous consultez la nouvelle version du site.
 

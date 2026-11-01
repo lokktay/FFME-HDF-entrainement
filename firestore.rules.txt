@@ -32,7 +32,8 @@ service cloud.firestore {
     }
 
     function isMyClub(docClubId) {
-      return docClubId in userClubIds(get(/databases/$(database)/documents/users/$(request.auth.uid)).data);
+      return isPlatformAdmin() ||
+        docClubId in userClubIds(get(/databases/$(database)/documents/users/$(request.auth.uid)).data);
     }
 
     function clubRole(userData, clubId) {
@@ -52,7 +53,8 @@ service cloud.firestore {
       let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       let clubData = get(/databases/$(database)/documents/clubs/$(clubId)).data;
       return isAuth() &&
-        (clubData.get('managerIds', []).hasAny([request.auth.uid]) ||
+        (isPlatformAdmin() ||
+         clubData.get('managerIds', []).hasAny([request.auth.uid]) ||
          (isMyClub(clubId) && clubRole(userData, clubId) == 'gerant'));
     }
 
@@ -100,6 +102,7 @@ service cloud.firestore {
     function canReadPrivateProfile(userId) {
       let ownerData = get(/databases/$(database)/documents/users/$(userId)).data;
       return request.auth.uid == userId ||
+        isPlatformAdmin() ||
         (isLinkedParent(userId) && sharesClub(ownerData)) ||
         isCoachForUser(ownerData);
     }
@@ -185,9 +188,10 @@ service cloud.firestore {
     }
 
     function isCoachForUser(userData) {
-      return activeClubId() != '' &&
+      return isPlatformAdmin() ||
+        (activeClubId() != '' &&
         activeClubId() in userClubIds(userData) &&
-        isCoach(activeClubId());
+        isCoach(activeClubId()));
     }
 
     function canOwnerSyncAvatar(userId) {
@@ -360,8 +364,10 @@ service cloud.firestore {
         (request.resource.data.get('clubRoles', {}).get(request.resource.data.clubId, 'athlete') == 'athlete' ||
          (request.resource.data.get('clubRoles', {}).get(request.resource.data.clubId, 'athlete') == 'gerant' &&
           get(/databases/$(database)/documents/clubs/$(request.resource.data.clubId)).data.get('managerIds', []).hasAny([request.auth.uid])));
-      allow get, list: if isAuth() && (request.auth.uid == userId ||
-        (sharesClub(resource.data) && (isPublicUserDocument(resource.data) || isCoachForUser(resource.data))));
+      allow get, list: if isPlatformAdmin() ||
+        (isAuth() && request.auth.uid == userId) ||
+        (isAuth() && sharesClub(resource.data) &&
+         (isPublicUserDocument(resource.data) || isCoachForUser(resource.data)));
       allow update: if isAuth() && (
         (request.auth.uid == userId &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clubId', 'clubIds']) &&
@@ -373,6 +379,9 @@ service cloud.firestore {
           !('primaryClubId' in resource.data) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['primaryClubId']) &&
           request.resource.data.primaryClubId == resource.data.get('clubId', '')) ||
+        (isPlatformAdmin() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clubRoles']) &&
+          request.resource.data.get('clubRoles', {}).diff(resource.data.get('clubRoles', {})).affectedKeys().hasOnly(userClubIds(resource.data))) ||
         (sharesClub(resource.data) && isClubManager(activeClubId()) &&
           activeClubId() in userClubIds(resource.data) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clubRoles']) &&
@@ -551,7 +560,7 @@ service cloud.firestore {
         request.resource.data.keys().hasOnly(['clubId', 'senderId', 'receiverId', 'text', 'date']) &&
         request.resource.data.senderId == request.auth.uid &&
         request.resource.data.receiverId != request.auth.uid &&
-        request.resource.data.clubId == activeClubId() &&
+        (request.resource.data.clubId == activeClubId() || isPlatformAdmin()) &&
         isMyClub(request.resource.data.clubId) &&
         request.resource.data.text is string &&
         request.resource.data.text.size() > 0 &&
@@ -567,7 +576,7 @@ service cloud.firestore {
       allow create: if isAuth() &&
         request.resource.data.keys().hasOnly(['id', 'clubId', 'createdBy', 'text', 'date', 'timestamp']) &&
         request.resource.data.createdBy == request.auth.uid &&
-        request.resource.data.clubId == activeClubId() &&
+        (request.resource.data.clubId == activeClubId() || isPlatformAdmin()) &&
         isMyClub(request.resource.data.clubId) &&
         request.resource.data.text is string &&
         request.resource.data.text.size() <= 2000;
