@@ -185,15 +185,8 @@ async function migrateLegacyPrivateData(user) {
         !privateSnapshot.data().profile || user.email || user.dob || legacyProfile || user.parentCode;
     if(!needsProfileMigration) {
         const privateData = privateSnapshot.data() || {};
-        const privateAvatar = privateData.profile && privateData.profile.avatar;
-        const publicUser = !user.avatar && privateAvatar
-            ? { ...user, avatar: privateAvatar }
-            : user;
-        if(publicUser !== user) {
-            await userRef.update({ avatar: privateAvatar });
-        }
         return {
-            ...publicUser,
+            ...user,
             ...privateData,
             profile: { ...getEmptyProfile(), ...(privateData.profile || {}) }
         };
@@ -3474,3 +3467,27 @@ async function sendMessage() {
         console.error("Erreur d'envoi du message:", error);
         alert("Impossible d'envoyer le message : " + error.message);
     }
+}
+
+function openCoachSettingsModal() { 
+    document.getElementById('coach-setting-automessage').checked = currentUser.profile.settings.autoMessageDisabled; 
+    openModal('modal-coach-settings'); 
+}
+
+async function saveCoachSettings() {
+    const settings = {
+        ...(currentUser.profile.settings || {}),
+        autoMessageDisabled: document.getElementById('coach-setting-automessage').checked
+    };
+    try {
+        await savePrivateProfile(currentUser.id, { 'profile.settings': settings });
+        currentUser.profile.settings = settings;
+        closeModal('modal-coach-settings');
+    } catch(error) {
+        console.error("Erreur d'enregistrement des paramètres du coach:", error);
+        alert("Impossible d'enregistrer les paramètres : " + error.message);
+    }
+}
+
+// Lancement Initial
+initApp();
