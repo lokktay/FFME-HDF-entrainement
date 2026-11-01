@@ -185,8 +185,15 @@ async function migrateLegacyPrivateData(user) {
         !privateSnapshot.data().profile || user.email || user.dob || legacyProfile || user.parentCode;
     if(!needsProfileMigration) {
         const privateData = privateSnapshot.data() || {};
+        const privateAvatar = privateData.profile && privateData.profile.avatar;
+        const publicUser = !user.avatar && privateAvatar
+            ? { ...user, avatar: privateAvatar }
+            : user;
+        if(publicUser !== user) {
+            await userRef.update({ avatar: privateAvatar });
+        }
         return {
-            ...user,
+            ...publicUser,
             ...privateData,
             profile: { ...getEmptyProfile(), ...(privateData.profile || {}) }
         };
@@ -893,6 +900,8 @@ function initApp() {
 let listeners = [];
 let realtimeListenerGeneration = 0;
 const sessionAccessSyncInFlight = new Set();
+const reportedRealtimeErrors = new Set();
+let sessionAccessSyncFailedGeneration = null;
 
 function stopRealtimeListeners() {
     realtimeListenerGeneration++;
@@ -903,7 +912,16 @@ function stopRealtimeListeners() {
 function handleRealtimeListenerError(label, generation, error) {
     if(generation !== realtimeListenerGeneration || !auth.currentUser) return;
     console.error(`Erreur de synchronisation ${label}:`, error);
-    alert(`Impossible de charger ${label} : ${error.message}`);
+    const errorKey = `${generation}:${error.code || error.name || 'unknown'}`;
+    if(reportedRealtimeErrors.has(errorKey)) return;
+    reportedRealtimeErrors.add(errorKey);
+
+    const reason = error.code === 'permission-denied' && label === "les accès aux séances attribuées"
+        ? "Firebase a refusé la synchronisation des anciennes attributions. Vérifiez que les règles Firestore publiées correspondent à cette version du site."
+        : error.code === 'permission-denied'
+            ? "Firebase a refusé l'accès. Vérifiez que les règles Firestore publiées correspondent à cette version du site."
+        : error.message;
+    alert(`La synchronisation de ${label} a rencontré une erreur : ${reason} Les détails sont disponibles dans la console du navigateur.`);
 }
 
 async function loadAssignedAthleteSessions(assignments, clubId, generation) {
@@ -932,7 +950,8 @@ async function loadAssignedAthleteSessions(assignments, clubId, generation) {
 }
 
 async function syncAssignedSessionAccess(assignments, clubId, generation) {
-    if(!currentUser || !hasCoachRights(currentUser, clubId)) return;
+    if(!currentUser || !hasCoachRights(currentUser, clubId) ||
+        sessionAccessSyncFailedGeneration === generation) return;
     const athletesBySession = new Map();
     const assignmentsBySession = new Map();
     assignments.filter(assignment =>
@@ -996,6 +1015,9 @@ async function syncAssignedSessionAccess(assignments, clubId, generation) {
             await batch.commit();
         }
     } catch(error) {
+        if(error.code === 'permission-denied') {
+            sessionAccessSyncFailedGeneration = generation;
+        }
         handleRealtimeListenerError("les accès aux séances attribuées", generation, error);
     } finally {
         sessionsToSync.forEach(([sessionId]) => sessionAccessSyncInFlight.delete(`${clubId}:${sessionId}`));
@@ -1005,6 +1027,8 @@ async function syncAssignedSessionAccess(assignments, clubId, generation) {
 function startRealtimeListeners(clubId) {
     stopRealtimeListeners();
     const listenerGeneration = realtimeListenerGeneration;
+    reportedRealtimeErrors.clear();
+    sessionAccessSyncFailedGeneration = null;
     clubMembers = [];
     clubBlocks = [];
     clubSessions = [];
@@ -3450,27 +3474,3 @@ async function sendMessage() {
         console.error("Erreur d'envoi du message:", error);
         alert("Impossible d'envoyer le message : " + error.message);
     }
-}
-
-function openCoachSettingsModal() { 
-    document.getElementById('coach-setting-automessage').checked = currentUser.profile.settings.autoMessageDisabled; 
-    openModal('modal-coach-settings'); 
-}
-
-async function saveCoachSettings() {
-    const settings = {
-        ...(currentUser.profile.settings || {}),
-        autoMessageDisabled: document.getElementById('coach-setting-automessage').checked
-    };
-    try {
-        await savePrivateProfile(currentUser.id, { 'profile.settings': settings });
-        currentUser.profile.settings = settings;
-        closeModal('modal-coach-settings');
-    } catch(error) {
-        console.error("Erreur d'enregistrement des paramètres du coach:", error);
-        alert("Impossible d'enregistrer les paramètres : " + error.message);
-    }
-}
-
-// Lancement Initial
-initApp();
