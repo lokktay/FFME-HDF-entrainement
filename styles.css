@@ -1304,12 +1304,100 @@ textarea.form-control {
 
 #builder-blocks-list { 
     display: grid; 
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
-    gap: 1rem; 
+    grid-template-columns: 1fr; 
+    gap: 0.75rem; 
     align-content: start; 
     overflow-y: auto; 
     flex: 1; 
     padding-bottom: 2rem; 
+}
+
+.builder-block-card {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.builder-block-preview-button {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.builder-block-preview-button:focus-visible {
+    outline: 3px solid var(--primary-ring);
+    outline-offset: 3px;
+}
+
+.builder-block-category {
+    color: var(--ffme-blue);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.builder-block-preview-button strong {
+    font-size: 0.92rem;
+}
+
+.builder-block-description-preview {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.4;
+    white-space: pre-line;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.builder-block-add-button {
+    align-self: center;
+    flex: 0 0 auto;
+    min-width: 2.5rem;
+    font-size: 1.2rem;
+}
+
+.block-preview-modal {
+    z-index: 1101;
+}
+
+.block-preview-modal .modal-header {
+    align-items: flex-start;
+}
+
+.block-preview-modal .modal-header > div {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+}
+
+.block-preview-modal h2 {
+    margin: 0;
+}
+
+.block-preview-description {
+    max-height: 55vh;
+    overflow-y: auto;
+    margin: 1.25rem 0;
+    color: var(--text-muted);
+    line-height: 1.6;
+    white-space: pre-wrap;
 }
 
 .draggable-item { 
@@ -1860,6 +1948,90 @@ textarea.form-control {
     color: #FFFFFF;
 }
 
+.assignment-modal {
+    width: min(94vw, 850px);
+    max-width: 850px;
+}
+
+.assignment-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.assignment-section-title {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.assignment-group-card {
+    min-width: 0;
+    padding: 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface-subtle);
+}
+
+.assignment-group-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.65rem;
+}
+
+.assignment-group-heading strong {
+    color: var(--primary);
+}
+
+.assignment-group-heading button {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.75rem;
+}
+
+.assignment-group-members {
+    grid-template-columns: 1fr;
+    max-height: 220px;
+    padding: 0.5rem;
+}
+
+.assignment-member-option {
+    min-height: 58px;
+}
+
+.assignment-member-pending {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.assignment-picker-heading {
+    align-items: end;
+}
+
+.assignment-select-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 0 0.5rem;
+}
+
+.assignment-select-actions button {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.82rem;
+}
+
+.assignment-member-picker {
+    max-height: 320px;
+    margin-bottom: 1rem;
+}
+
+.assignment-submit-button {
+    width: 100%;
+    padding: 1rem;
+}
+
 .group-member-empty {
     grid-column: 1 / -1;
     margin: 0;
@@ -2163,34 +2335,57 @@ textarea.form-control {
 }
 
 .timer-panel { 
-    background: #0B192C; 
+    --timer-phase-color: #B91C1C;
+    background: var(--timer-phase-color); 
     color: white; 
-    padding: 2rem; 
+    padding: 1rem 1.25rem; 
     border-radius: var(--radius-lg); 
     text-align: center; 
-    margin-bottom: 1.5rem; 
+    margin-bottom: 1rem; 
     display: none;
     box-shadow: var(--shadow-lg);
+    transition: background-color var(--transition-fast);
+}
+
+.timer-panel[data-phase="rest"] {
+    --timer-phase-color: #15803D;
+}
+
+.timer-phase {
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 .timer-display { 
-    font-size: 5rem; 
+    font-size: 3.25rem; 
     font-weight: 800; 
-    margin: 1.25rem 0; 
+    margin: 0.5rem 0 0.75rem; 
     font-variant-numeric: tabular-nums; 
     line-height: 1; 
-    text-shadow: 0 4px 20px rgba(0, 85, 164, 0.4);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     letter-spacing: -0.04em;
 }
 
+.timer-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.timer-inputs label {
+    font-size: 0.82rem;
+}
+
 .timer-inputs input { 
-    width: 80px; 
+    width: 68px; 
     text-align: center; 
-    padding: 0.75rem; 
+    padding: 0.45rem; 
     border-radius: var(--radius-md); 
     border: none; 
     font-weight: 700; 
-    font-size: 1.1rem; 
+    font-size: 0.95rem; 
 }
 
 .rpe-slider { 
@@ -2218,6 +2413,11 @@ textarea.form-control {
     display: inline-block; 
     margin-top: 0.5rem; 
     font-size: 0.88rem; 
+}
+
+.parent-code-badge code {
+    display: block;
+    overflow-wrap: anywhere;
 }
 
 /* === REFONTE RPE & SAISIE ATHLÈTE === */
@@ -2354,7 +2554,20 @@ textarea.form-control {
         bottom: 16px;
     }
     .timer-display {
-        font-size: 3.8rem;
+        font-size: 2.8rem;
+    }
+    .timer-panel {
+        padding: 0.85rem;
+    }
+    .timer-inputs {
+        gap: 0.5rem;
+    }
+    .assignment-picker-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .assignment-member-picker {
+        grid-template-columns: 1fr;
     }
     .modal {
         padding: 1.25rem;
