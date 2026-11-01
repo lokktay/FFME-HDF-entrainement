@@ -32,12 +32,22 @@ let chartInstances = {};
 let currentMonth = new Date().getMonth(); let currentYear = new Date().getFullYear();
 let selectedDateForNote = null; let selectedUserIdForCalendar = null;
 let editingBlockId = null; let editingSessionId = null; let builderBlocks = [];
+let isSavingSession = false;
 let viewedAssignmentId = null; // Déclarée UNE SEULE FOIS ici
 let currentSessionFilter = 'Toutes'; let coachBlockSearch = ''; let coachSessionSearch = ''; 
 let coachBlockFilter = 'Toutes'; let currentSessionLibraryTab = 'personal'; 
 let activeChatUserId = null; let editingGroupId = null; let editingCompIndex = null;
 let groupEditorSelectedIds = new Set();
 let groupEditorAvatar = null;
+let assignmentSelectedIds = new Set();
+let assignmentPendingAthleteIds = new Set();
+let viewedBlockId = null;
+let linkedChildIds = [];
+let linkedParentIds = [];
+let currentUserParentCode = null;
+const parentLinkCodeCache = new Map();
+let authBootstrapInProgress = false;
+const parentLinkCodeAlphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 let groupAlertsUpdating = new Set();
 let viewedGroupId = null;
 let isRegistering = false; 
@@ -125,8 +135,318 @@ function getUserClubIds(user = currentUser) {
     return [...new Set(clubIds)];
 }
 
+function getPrivateProfileRef(userId) {
+    return db.collection('users').doc(userId).collection('private').doc('profile');
+}
+
+function getClubDirectoryRef(clubId, userId) {
+    return db.collection('clubs').doc(clubId).collection('members').doc(userId);
+}
+
+function getClubRoleForUser(user, clubId) {
+    const club = allClubs.find(item => item.id === clubId);
+    if(club && Array.isArray(club.managerIds) && club.managerIds.includes(user.id)) return 'gerant';
+    if(user.clubRoles && user.clubRoles[clubId]) return user.clubRoles[clubId];
+    const legacyCoachClubId = user.primaryClubId || user.clubId;
+    return user.role === 'coach' && legacyCoachClubId === clubId ? 'coach' : 'athlete';
+}
+
+function getDirectoryRoleFromUser(user, clubId) {
+    if(user.clubRoles && user.clubRoles[clubId]) return user.clubRoles[clubId];
+    const legacyCoachClubId = user.primaryClubId || user.clubId;
+    return user.role === 'coach' && legacyCoachClubId === clubId ? 'coach' : 'athlete';
+}
+
+function getDirectoryEntry(user, clubId, role = getClubRoleForUser(user, clubId)) {
+    return {
+        userId: user.id,
+        username: user.username || '',
+        avatar: user.avatar || null,
+        role,
+        clubId
+    };
+}
+
+async function loadPrivateProfile(userId) {
+    const snapshot = await getPrivateProfileRef(userId).get();
+    return snapshot.exists ? snapshot.data() : null;
+}
+
+async function savePrivateProfile(userId, updates) {
+    await getPrivateProfileRef(userId).update(updates);
+}
+
+async function migrateLegacyPrivateData(user) {
+    const userRef = db.collection('users').doc(user.id);
+    const privateRef = getPrivateProfileRef(user.id);
+    const privateSnapshot = await privateRef.get();
+    const legacyProfile = user.profile && typeof user.profile === 'object' ? user.profile : null;
+    const needsProfileMigration = !privateSnapshot.exists ||
+        !privateSnapshot.data().profile || user.email || user.dob || legacyProfile || user.parentCode;
+    if(!needsProfileMigration) {
+        const privateData = privateSnapshot.data() || {};
+        return {
+            ...user,
+            ...privateData,
+            profile: { ...getEmptyProfile(), ...(privateData.profile || {}) }
+        };
+    }
+
+    const existingPrivate = privateSnapshot.exists ? privateSnapshot.data() : {};
+    const profile = existingPrivate.profile || legacyProfile || getEmptyProfile();
+    const privateData = {
+        email: existingPrivate.email || user.email || (auth.currentUser && auth.currentUser.email) || '',
+        dob: existingPrivate.dob || user.dob || '',
+        profile
+    };
+    const updates = {};
+    ['email', 'dob', 'profile', 'parentCode'].forEach(field => {
+        if(field in user) updates[field] = firebase.firestore.FieldValue.delete();
+    });
+    if(!user.avatar && profile.avatar) updates.avatar = profile.avatar;
+
+    const batch = db.batch();
+    batch.set(privateRef, privateData);
+    if(Object.keys(updates).length) batch.update(userRef, updates);
+    await batch.commit();
+    const migratedUser = { ...user, avatar: user.avatar || profile.avatar };
+    delete migratedUser.email;
+    delete migratedUser.dob;
+    delete migratedUser.profile;
+    delete migratedUser.parentCode;
+    return {
+        ...migratedUser,
+        ...privateData,
+        profile: { ...getEmptyProfile(), ...privateData.profile }
+    };
+}
+
+async function syncClubDirectory(user, clubIds = getUserClubIds(user)) {
+    if(!user || !user.id) return;
+    const uniqueClubIds = [...new Set(clubIds.filter(Boolean))];
+    const batch = db.batch();
+    const entries = await Promise.all(uniqueClubIds.map(async clubId => {
+        const clubSnapshot = await db.collection('clubs').doc(clubId).get();
+        const isManager = clubSnapshot.exists && (clubSnapshot.data().managerIds || []).includes(user.id);
+        const entry = getDirectoryEntry(user, clubId, isManager ? 'gerant' : getDirectoryRoleFromUser(user, clubId));
+        return { clubId, entry };
+    }));
+    entries.forEach(({ clubId, entry }) => batch.set(getClubDirectoryRef(clubId, user.id), entry));
+    if(uniqueClubIds.length) await batch.commit();
+}
+
+async function backfillClubDirectory(clubId, member, legacyPrivateData = null) {
+    if(!member || !member.id || !getUserClubIds(member).includes(clubId)) return;
+    const directoryRef = getClubDirectoryRef(clubId, member.id);
+    const directorySnapshot = await directoryRef.get();
+    const clubSnapshot = await db.collection('clubs').doc(clubId).get();
+    const isManager = clubSnapshot.exists && (clubSnapshot.data().managerIds || []).includes(member.id);
+    const entry = getDirectoryEntry(
+        member,
+        clubId,
+        isManager ? 'gerant' : getDirectoryRoleFromUser(member, clubId)
+    );
+    if(!directorySnapshot.exists ||
+        directorySnapshot.data().username !== entry.username ||
+        directorySnapshot.data().avatar !== entry.avatar ||
+        directorySnapshot.data().role !== entry.role) {
+        await directoryRef.set(entry);
+    }
+
+    const hasLegacyPrivateData = legacyPrivateData &&
+        ['email', 'dob', 'profile'].some(field => Object.prototype.hasOwnProperty.call(legacyPrivateData, field));
+    if(hasLegacyPrivateData && !(await getPrivateProfileRef(member.id).get()).exists) {
+        await getPrivateProfileRef(member.id).set({
+            email: legacyPrivateData.email || '',
+            dob: legacyPrivateData.dob || '',
+            profile: legacyPrivateData.profile && typeof legacyPrivateData.profile === 'object'
+                ? legacyPrivateData.profile
+                : {}
+        });
+    }
+}
+
+function createParentLinkCode() {
+    const bytes = new Uint8Array(10);
+    crypto.getRandomValues(bytes);
+    return [...bytes].map(byte => parentLinkCodeAlphabet[byte & 31]).join('');
+}
+
+function isValidParentLinkCode(code) {
+    return typeof code === 'string' && /^[0-9A-HJKMNPQRSTVWXYZ]{10}$/.test(code);
+}
+
+async function ensureParentLinkCode(userId, legacyParentCode = null) {
+    const userRef = db.collection('users').doc(userId);
+    const privateCodeRef = userRef.collection('private').doc('parentLinkCode');
+    let code = await db.runTransaction(async transaction => {
+        const codeSnapshot = await transaction.get(privateCodeRef);
+        const existingCode = codeSnapshot.exists ? codeSnapshot.data().code : null;
+        const existingCodeRef = isValidParentLinkCode(existingCode) ||
+            (typeof existingCode === 'string' && /^[a-f0-9]{64}$/.test(existingCode))
+            ? db.collection('parentLinkCodes').doc(existingCode)
+            : null;
+        const existingCodeSnapshot = existingCodeRef
+            ? await transaction.get(existingCodeRef)
+            : null;
+        if(isValidParentLinkCode(existingCode) &&
+            existingCodeSnapshot && existingCodeSnapshot.exists &&
+            existingCodeSnapshot.data().childId === userId &&
+            !existingCodeSnapshot.data().usedBy) return existingCode;
+
+        const legacyCodeRef = legacyParentCode &&
+            (isValidParentLinkCode(legacyParentCode) || /^[a-f0-9]{64}$/.test(legacyParentCode)) &&
+            legacyParentCode !== existingCode
+            ? db.collection('parentLinkCodes').doc(legacyParentCode)
+            : null;
+        const legacyCodeSnapshot = legacyCodeRef
+            ? await transaction.get(legacyCodeRef)
+            : null;
+
+        const newCode = createParentLinkCode();
+        const codeRef = db.collection('parentLinkCodes').doc(newCode);
+        const newCodeSnapshot = await transaction.get(codeRef);
+        if(newCodeSnapshot.exists) throw new Error("Collision de code parent, veuillez réessayer.");
+
+        transaction.set(codeRef, { childId: userId, createdAt: Date.now() });
+        transaction.set(privateCodeRef, { code: newCode });
+        if(existingCodeRef && existingCodeSnapshot && existingCodeSnapshot.exists &&
+            existingCodeSnapshot.data().childId === userId &&
+            !existingCodeSnapshot.data().usedBy) {
+            transaction.delete(existingCodeRef);
+        }
+        if(legacyCodeRef && legacyCodeSnapshot && legacyCodeSnapshot.exists &&
+            legacyCodeSnapshot.data().childId === userId &&
+            !legacyCodeSnapshot.data().usedBy) {
+            transaction.delete(legacyCodeRef);
+        }
+        return newCode;
+    });
+
+    if(legacyParentCode) {
+        await userRef.update({ parentCode: firebase.firestore.FieldValue.delete() });
+    }
+    parentLinkCodeCache.set(userId, code);
+    return code;
+}
+
+async function loadLinkedChildIds(parentId) {
+    const snapshot = await db.collection('users').doc(parentId).collection('linkedChildren').get();
+    return loadVerifiedParentLinks(snapshot.docs, parentId, true);
+}
+
+async function loadLinkedParentIds(childId) {
+    const snapshot = await db.collection('users').doc(childId).collection('linkedParents').get();
+    return loadVerifiedParentLinks(snapshot.docs, childId, false);
+}
+
+async function loadVerifiedParentLinks(documents, ownerId, isParent) {
+    const verifiedIds = await Promise.all(documents.map(async doc => {
+        const link = doc.data();
+        const parentId = isParent ? ownerId : doc.id;
+        const childId = isParent ? doc.id : ownerId;
+        if(link.parentId !== parentId || link.childId !== childId ||
+            typeof link.codeId !== 'string' ||
+            !(isValidParentLinkCode(link.codeId) || /^[a-f0-9]{64}$/.test(link.codeId))) return null;
+
+        const counterpartRef = isParent
+            ? db.collection('users').doc(childId).collection('linkedParents').doc(parentId)
+            : db.collection('users').doc(parentId).collection('linkedChildren').doc(childId);
+        const [counterpartSnapshot, codeSnapshot] = await Promise.all([
+            counterpartRef.get(),
+            db.collection('parentLinkCodes').doc(link.codeId).get()
+        ]);
+        if(!counterpartSnapshot.exists || !codeSnapshot.exists) return null;
+        const counterpart = counterpartSnapshot.data();
+        const code = codeSnapshot.data();
+        return counterpart.parentId === parentId &&
+            counterpart.childId === childId &&
+            counterpart.codeId === link.codeId &&
+            code.childId === childId &&
+            code.usedBy === parentId
+            ? (isParent ? childId : parentId)
+            : null;
+    }));
+    return verifiedIds.filter(Boolean);
+}
+
+async function createParentChildLink(parentId, code, requiredClubId) {
+    code = String(code || '').trim().toUpperCase();
+    if(!isValidParentLinkCode(code)) {
+        throw new Error("Le code de liaison doit comporter 10 caractères.");
+    }
+
+    const codeSnapshot = await db.collection('parentLinkCodes').doc(code).get();
+    if(!codeSnapshot.exists || codeSnapshot.data().usedBy) throw new Error("Code invalide ou déjà utilisé.");
+    const childId = codeSnapshot.data().childId;
+    if(!childId || childId === parentId) throw new Error("Ce code ne peut pas être utilisé pour ce compte.");
+
+    const directorySnapshot = requiredClubId
+        ? await getClubDirectoryRef(requiredClubId, childId).get()
+        : null;
+    if(!directorySnapshot || !directorySnapshot.exists) {
+        throw new Error("L'enfant doit également être membre de votre club actif.");
+    }
+
+    const parentLinkRef = db.collection('users').doc(parentId).collection('linkedChildren').doc(childId);
+    const childLinkRef = db.collection('users').doc(childId).collection('linkedParents').doc(parentId);
+    const [existingParentLink, existingChildLink] = await Promise.all([
+        parentLinkRef.get(),
+        childLinkRef.get()
+    ]);
+    if(existingParentLink.exists && existingChildLink.exists) {
+        const parentLink = existingParentLink.data();
+        const childLink = existingChildLink.data();
+        if(typeof parentLink.codeId === 'string' &&
+            (isValidParentLinkCode(parentLink.codeId) || /^[a-f0-9]{64}$/.test(parentLink.codeId)) &&
+            parentLink.parentId === parentId && parentLink.childId === childId &&
+            parentLink.codeId === childLink.codeId && childLink.parentId === parentId &&
+            childLink.childId === childId) {
+            const existingCodeSnapshot = await db.collection('parentLinkCodes').doc(parentLink.codeId).get();
+            if(existingCodeSnapshot.exists &&
+                existingCodeSnapshot.data().childId === childId &&
+                existingCodeSnapshot.data().usedBy === parentId) return childId;
+        }
+    }
+    if(existingParentLink.exists || existingChildLink.exists) {
+        await removeParentChildLink(parentId, childId);
+    }
+
+    const linkData = { parentId, childId, codeId: code, createdAt: Date.now() };
+    const batch = db.batch();
+    batch.update(db.collection('parentLinkCodes').doc(code), { usedBy: parentId });
+    batch.set(parentLinkRef, linkData);
+    batch.set(childLinkRef, linkData);
+    await batch.commit();
+    return childId;
+}
+
+async function removeParentChildLink(parentId, childId) {
+    const parentLinkRef = db.collection('users').doc(parentId).collection('linkedChildren').doc(childId);
+    const childLinkRef = db.collection('users').doc(childId).collection('linkedParents').doc(parentId);
+    if(auth.currentUser && auth.currentUser.uid === childId) {
+        const childLinkSnapshot = await childLinkRef.get();
+        if(!childLinkSnapshot.exists) return;
+        const childBatch = db.batch();
+        childBatch.delete(childLinkRef);
+        childBatch.delete(parentLinkRef);
+        await childBatch.commit();
+        return;
+    }
+
+    const [parentLinkSnapshot, childLinkSnapshot] = await Promise.all([
+        parentLinkRef.get(),
+        childLinkRef.get()
+    ]);
+    const batch = db.batch();
+    if(parentLinkSnapshot.exists) batch.delete(parentLinkRef);
+    if(childLinkSnapshot.exists) batch.delete(childLinkRef);
+    if(parentLinkSnapshot.exists || childLinkSnapshot.exists) await batch.commit();
+}
+
 function getClubRole(user = currentUser, clubId = currentUser && currentUser.clubId) {
     if(!user || !clubId) return 'athlete';
+    if(originalParentUser && user.id === currentUser.id) return 'athlete';
     const club = allClubs.find(item => item.id === clubId);
     if(club && Array.isArray(club.managerIds) && club.managerIds.includes(user.id)) return 'gerant';
     if(user.clubRoles && user.clubRoles[clubId]) return user.clubRoles[clubId];
@@ -167,16 +487,19 @@ function renderProfileClubs() {
     const selectedClubId = clubSelect.value;
     const clubIds = getUserClubIds();
     const myClubs = clubIds.map(id => allClubs.find(club => club.id === id)).filter(Boolean);
+    const isViewingChild = Boolean(originalParentUser);
     clubsList.innerHTML = myClubs.map(club => `
         <div class="club-membership-item">
             <div><strong>${escapeHtml(club.name)}</strong>${currentUser.clubId === club.id ? '<span class="club-current-badge">Club actif</span>' : ''}</div>
-            <div class="club-membership-actions">
+            ${isViewingChild ? '' : `<div class="club-membership-actions">
                 ${currentUser.clubId !== club.id ? `<button class="btn-outline" onclick="setActiveClub('${escapeHtml(club.id)}')">Utiliser ce club</button>` : ''}
                 <button class="btn-outline" style="color:var(--danger);" onclick="leaveClub('${escapeHtml(club.id)}')">Quitter</button>
-            </div>
+            </div>`}
         </div>
     `).join('') || '<p style="color:var(--text-muted);">Vous n’êtes membre d’aucun club.</p>';
 
+    const clubManagementPanel = clubSelect.closest('.club-management-panel');
+    if(clubManagementPanel) clubManagementPanel.style.display = isViewingChild ? 'none' : '';
     const availableClubs = allClubs.filter(club => !clubIds.includes(club.id));
     clubSelect.innerHTML = '<option value="">Choisir un club</option>' +
         availableClubs.map(club => `<option value="${escapeHtml(club.id)}">${escapeHtml(club.name)}</option>`).join('') +
@@ -263,6 +586,14 @@ async function updateClubMemberRole(memberId) {
         const batch = db.batch();
         const userRef = db.collection('users').doc(memberId);
         batch.update(userRef, { [`clubRoles.${currentUser.clubId}`]: role });
+        const updatedMember = {
+            ...member,
+            clubRoles: { ...(member.clubRoles || {}), [currentUser.clubId]: role }
+        };
+        batch.set(getClubDirectoryRef(currentUser.clubId, memberId), {
+            ...getDirectoryEntry(updatedMember, currentUser.clubId),
+            role
+        });
         if(role === 'gerant') {
             batch.update(db.collection('clubs').doc(currentUser.clubId), {
                 managerIds: firebase.firestore.FieldValue.arrayUnion(currentUser.id, memberId)
@@ -298,6 +629,14 @@ async function resolveRoleRequest(requestId, status) {
             batch.update(db.collection('users').doc(member.id), {
                 [`clubRoles.${currentUser.clubId}`]: request.requestedRole
             });
+            const updatedMember = {
+                ...member,
+                clubRoles: { ...(member.clubRoles || {}), [currentUser.clubId]: request.requestedRole }
+            };
+            batch.set(getClubDirectoryRef(currentUser.clubId, member.id), {
+                ...getDirectoryEntry(updatedMember, currentUser.clubId),
+                role: request.requestedRole
+            });
             if(request.requestedRole === 'gerant') {
                 batch.update(db.collection('clubs').doc(currentUser.clubId), {
                     managerIds: firebase.firestore.FieldValue.arrayUnion(currentUser.id, member.id)
@@ -317,6 +656,7 @@ async function resolveRoleRequest(requestId, status) {
 }
 
 async function setActiveClub(clubId) {
+    if(originalParentUser) return alert("Revenez au compte parent pour modifier l'adhésion à un club.");
     if(!getUserClubIds().includes(clubId)) return alert("Vous n'êtes pas membre de ce club.");
     try {
         await db.collection('users').doc(currentUser.id).update({ clubId });
@@ -330,6 +670,7 @@ async function setActiveClub(clubId) {
 }
 
 async function joinClub() {
+    if(originalParentUser) return alert("Revenez au compte parent pour modifier l'adhésion à un club.");
     const clubId = document.getElementById('available-clubs-select').value;
     if(!clubId) return alert("Sélectionnez un club.");
     if(clubId === '_new_') return;
@@ -339,7 +680,11 @@ async function joinClub() {
     const updates = { clubIds };
     if(!currentUser.clubId) updates.clubId = clubId;
     try {
-        await db.collection('users').doc(currentUser.id).update(updates);
+        const batch = db.batch();
+        batch.update(db.collection('users').doc(currentUser.id), updates);
+        const updatedUser = { ...currentUser, ...updates };
+        batch.set(getClubDirectoryRef(clubId, currentUser.id), getDirectoryEntry(updatedUser, clubId));
+        await batch.commit();
         currentUser.clubIds = clubIds;
         if(!currentUser.clubId) {
             currentUser.clubId = clubId;
@@ -356,6 +701,7 @@ async function joinClub() {
 }
 
 async function createClub() {
+    if(originalParentUser) return alert("Revenez au compte parent pour créer un club.");
     const nameInput = document.getElementById('new-club-name');
     const name = nameInput.value.trim();
     if(!name) return alert("Saisissez le nom du club.");
@@ -380,6 +726,11 @@ async function createClub() {
         const batch = db.batch();
         batch.set(clubRef, club);
         batch.update(db.collection('users').doc(currentUser.id), { clubIds, clubId: club.id });
+        const updatedUser = { ...currentUser, clubIds, clubId: club.id };
+        batch.set(getClubDirectoryRef(club.id, currentUser.id), {
+            ...getDirectoryEntry(updatedUser, club.id),
+            role: 'gerant'
+        });
         await batch.commit();
         allClubs = [...allClubs.filter(item => item.id !== club.id), club];
         currentUser.clubIds = clubIds;
@@ -397,6 +748,7 @@ async function createClub() {
 }
 
 async function leaveClub(clubId) {
+    if(originalParentUser) return alert("Revenez au compte parent pour modifier l'adhésion à un club.");
     const club = allClubs.find(item => item.id === clubId);
     const managers = clubMembers.filter(user => isClubManager(user, clubId));
     if(isClubManager(currentUser, clubId) && managers.length <= 1) {
@@ -407,7 +759,10 @@ async function leaveClub(clubId) {
     const clubIds = getUserClubIds().filter(id => id !== clubId);
     const nextClubId = wasActiveClub ? (clubIds[0] || null) : currentUser.clubId;
     try {
-        await db.collection('users').doc(currentUser.id).update({ clubIds, clubId: nextClubId });
+        const batch = db.batch();
+        batch.update(db.collection('users').doc(currentUser.id), { clubIds, clubId: nextClubId });
+        batch.delete(getClubDirectoryRef(clubId, currentUser.id));
+        await batch.commit();
         currentUser.clubIds = clubIds;
         currentUser.clubId = nextClubId;
         if(wasActiveClub) {
@@ -422,66 +777,122 @@ async function leaveClub(clubId) {
     }
 }
 
+async function startAuthenticatedSession(user) {
+    if(authBootstrapInProgress) return;
+    authBootstrapInProgress = true;
+    document.getElementById('loader-screen').style.display = 'flex';
+
+    try {
+        if(!user.emailVerified) {
+            document.getElementById('loader-screen').style.display = 'none';
+            await auth.signOut();
+            alert("Veuillez valider votre adresse email en cliquant sur le lien reçu, puis reconnectez-vous.");
+            initAuthUI();
+            return;
+        }
+
+        const userSnapshot = await db.collection('users').doc(user.uid).get();
+        if(!userSnapshot.exists) {
+            document.getElementById('loader-screen').style.display = 'none';
+            await auth.signOut();
+            alert("Profil introuvable. Votre compte a été mal créé. Veuillez vous réinscrire.");
+            initAuthUI();
+            return;
+        }
+
+        currentUser = await migrateLegacyPrivateData({ ...userSnapshot.data(), id: userSnapshot.id });
+        await syncClubDirectory(currentUser);
+        currentUserParentCode = null;
+        originalParentUser = null;
+        let parentLinkRulesAvailable = true;
+        try {
+            linkedChildIds = await loadLinkedChildIds(user.uid);
+            linkedParentIds = await loadLinkedParentIds(user.uid);
+        } catch(error) {
+            if(error.code !== 'permission-denied') throw error;
+            linkedChildIds = [];
+            linkedParentIds = [];
+            parentLinkRulesAvailable = false;
+            console.error("Les règles Firestore de liaison parent-enfant ne sont pas encore publiées.", error);
+            alert("La liaison parent-enfant sécurisée sera disponible après la publication des nouvelles règles Firebase. Le reste du compte reste accessible.");
+        }
+        const age = currentUser.dob
+            ? (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25)
+            : 18;
+        if(parentLinkRulesAvailable && (age < 18 || currentUser.parentCode || linkedParentIds.length > 0)) {
+            try {
+                currentUserParentCode = await ensureParentLinkCode(user.uid, currentUser.parentCode);
+            } catch(error) {
+                if(error.code !== 'permission-denied') throw error;
+                console.error("Les règles Firestore empêchent la création du code parent sécurisé.", error);
+                alert("La génération du code parent sera disponible après la publication des nouvelles règles Firebase.");
+            }
+        }
+
+        const activeClubId = currentUser.clubId || getUserClubIds(currentUser)[0] || null;
+        if(currentUser.clubId && !currentUser.primaryClubId) {
+            currentUser.primaryClubId = currentUser.clubId;
+            await db.collection('users').doc(currentUser.id).update({ primaryClubId: currentUser.clubId });
+        }
+        if(activeClubId && currentUser.clubId !== activeClubId) {
+            currentUser.clubId = activeClubId;
+            await db.collection('users').doc(currentUser.id).update({ clubId: activeClubId });
+        }
+        startRealtimeListeners(activeClubId);
+        document.getElementById('loader-screen').style.display = 'none';
+        showApp();
+    } catch(error) {
+        document.getElementById('loader-screen').style.display = 'none';
+        stopRealtimeListeners();
+        currentUser = null;
+        originalParentUser = null;
+        linkedChildIds = [];
+        linkedParentIds = [];
+        currentUserParentCode = null;
+        const rulesHint = error.code === 'permission-denied'
+            ? " Les règles Firestore déployées ne correspondent peut-être pas à cette version du site."
+            : "";
+        console.error("Erreur d'initialisation de la session Firebase:", error);
+        alert("Impossible de charger votre compte : " + error.message + rulesHint +
+            " Votre session reste active ; réessayez avec « Se connecter » après vérification de la connexion ou des règles.");
+        initAuthUI();
+    } finally {
+        authBootstrapInProgress = false;
+    }
+}
+
 // === INITIALISATION ET ÉCOUTEURS TEMPS RÉEL ===
 function initApp() {
     db.collection('clubs').onSnapshot(snap => {
         allClubs = snap.docs.map(d => ({ ...d.data(), id: d.id }));
         if(document.getElementById('auth-screen').style.display !== 'none') updateAuthClubList();
         else refreshCurrentTab();
+    }, error => {
+        console.error("Erreur de chargement des clubs:", error);
     });
 
-   auth.onAuthStateChanged(async user => {
-        if (isRegistering) return; 
+    auth.onAuthStateChanged(user => {
+        if(isRegistering) return;
 
-        if (user) {
-            try {
-                if (user.emailVerified) {
-                    const uSnap = await db.collection('users').doc(user.uid).get();
-                    
-                    if (uSnap.exists) {
-                        currentUser = uSnap.data();
-                        const activeClubId = currentUser.clubId || getUserClubIds(currentUser)[0] || null;
-                        if(currentUser.clubId && !currentUser.primaryClubId) {
-                            currentUser.primaryClubId = currentUser.clubId;
-                            await db.collection('users').doc(currentUser.id).update({ primaryClubId: currentUser.clubId });
-                        }
-                        if(activeClubId && currentUser.clubId !== activeClubId) {
-                            currentUser.clubId = activeClubId;
-                            await db.collection('users').doc(currentUser.id).update({ clubId: activeClubId });
-                        }
-                        startRealtimeListeners(activeClubId); 
-                        document.getElementById('loader-screen').style.display = 'none';
-                        showApp();
-                    } else {
-                        document.getElementById('loader-screen').style.display = 'none';
-                        await auth.signOut();
-                        alert("Profil introuvable. Votre compte a été mal créé. Veuillez vous réinscrire.");
-                        initAuthUI();
-                    }
-                } else {
-                    document.getElementById('loader-screen').style.display = 'none';
-                    await auth.signOut();
-                    alert("Veuillez valider votre adresse email en cliquant sur le lien reçu, puis reconnectez-vous.");
-                    initAuthUI();
-                }
-            } catch (error) {
-                document.getElementById('loader-screen').style.display = 'none';
-                await auth.signOut();
-                alert("Erreur de synchronisation : " + error.message);
-                initAuthUI();
-            }
-        } else {
-            stopRealtimeListeners();
-            currentUser = null;
-            originalParentUser = null;
-            document.getElementById('loader-screen').style.display = 'none';
-            initAuthUI();
+        if(user) {
+            startAuthenticatedSession(user);
+            return;
         }
+
+        stopRealtimeListeners();
+        currentUser = null;
+        originalParentUser = null;
+        linkedChildIds = [];
+        linkedParentIds = [];
+        currentUserParentCode = null;
+        document.getElementById('loader-screen').style.display = 'none';
+        initAuthUI();
     });
 }
 
 let listeners = [];
 let realtimeListenerGeneration = 0;
+const sessionAccessSyncInFlight = new Set();
 
 function stopRealtimeListeners() {
     realtimeListenerGeneration++;
@@ -496,7 +907,7 @@ function handleRealtimeListenerError(label, generation, error) {
 }
 
 async function loadAssignedAthleteSessions(assignments, clubId, generation) {
-    if(!currentUser || hasCoachRights(currentUser, clubId)) return;
+    if(!currentUser || originalParentUser || hasCoachRights(currentUser, clubId)) return;
     const loadedIds = new Set(clubSessions.map(session => session.id));
     const missingIds = [...new Set(assignments
         .filter(assignment => assignment.athleteId === currentUser.id && !assignment.sessionSnapshot)
@@ -520,6 +931,77 @@ async function loadAssignedAthleteSessions(assignments, clubId, generation) {
     }
 }
 
+async function syncAssignedSessionAccess(assignments, clubId, generation) {
+    if(!currentUser || !hasCoachRights(currentUser, clubId)) return;
+    const athletesBySession = new Map();
+    const assignmentsBySession = new Map();
+    assignments.filter(assignment =>
+        assignment.clubId === clubId && assignment.sessionId && assignment.athleteId
+    ).forEach(assignment => {
+        if(!athletesBySession.has(assignment.sessionId)) athletesBySession.set(assignment.sessionId, new Set());
+        athletesBySession.get(assignment.sessionId).add(assignment.athleteId);
+        if(!assignmentsBySession.has(assignment.sessionId)) assignmentsBySession.set(assignment.sessionId, []);
+        assignmentsBySession.get(assignment.sessionId).push(assignment);
+    });
+
+    const sessionsToSync = [...athletesBySession.entries()].filter(([sessionId]) => {
+        if(!isClubManager(currentUser, clubId) && !clubSessions.some(session => session.id === sessionId)) return false;
+        const key = `${clubId}:${sessionId}`;
+        if(sessionAccessSyncInFlight.has(key)) return false;
+        sessionAccessSyncInFlight.add(key);
+        return true;
+    });
+    if(sessionsToSync.length === 0) return;
+
+    try {
+        const snapshots = await Promise.all(sessionsToSync.map(async ([sessionId]) => {
+            const cachedSession = clubSessions.find(session => session.id === sessionId);
+            if(cachedSession) return { ref: db.collection('sessions').doc(sessionId), data: cachedSession };
+            const snapshot = await db.collection('sessions').doc(sessionId).get();
+            return snapshot.exists ? { ref: snapshot.ref, data: { id: snapshot.id, ...snapshot.data() } } : null;
+        }));
+        if(generation !== realtimeListenerGeneration || !auth.currentUser) return;
+
+        const updates = snapshots.map((session, index) => {
+            if(!session || session.data.clubId !== clubId) return null;
+            const [sessionId, athleteIds] = sessionsToSync[index];
+            const existingIds = new Set(session.data.assignedAthleteIds || []);
+            const missingIds = [...athleteIds].filter(athleteId => !existingIds.has(athleteId));
+            return { key: `${clubId}:${sessionId}`, ref: session.ref, missingIds, data: session.data };
+        }).filter(Boolean);
+
+        const writes = [];
+        for(const update of updates) {
+            if(update.missingIds.length) {
+                writes.push({ ref: update.ref, data: {
+                    assignedAthleteIds: firebase.firestore.FieldValue.arrayUnion(...update.missingIds)
+                }});
+            }
+            const missingSnapshots = assignmentsBySession.get(update.data.id)
+                .filter(assignment => !assignment.sessionSnapshot);
+            if(missingSnapshots.length) {
+                const sessionSnapshot = await createAssignedSessionSnapshot(update.data);
+                missingSnapshots.forEach(assignment => {
+                    writes.push({
+                        ref: db.collection('assignments').doc(assignment.id),
+                        data: { sessionSnapshot }
+                    });
+                });
+            }
+        }
+
+        for(let index = 0; index < writes.length; index += 450) {
+            const batch = db.batch();
+            writes.slice(index, index + 450).forEach(write => batch.update(write.ref, write.data));
+            await batch.commit();
+        }
+    } catch(error) {
+        handleRealtimeListenerError("les accès aux séances attribuées", generation, error);
+    } finally {
+        sessionsToSync.forEach(([sessionId]) => sessionAccessSyncInFlight.delete(`${clubId}:${sessionId}`));
+    }
+}
+
 function startRealtimeListeners(clubId) {
     stopRealtimeListeners();
     const listenerGeneration = realtimeListenerGeneration;
@@ -537,28 +1019,84 @@ function startRealtimeListeners(clubId) {
         return;
     }
 
+    let directoryMembers = [];
     let legacyMembers = [];
     let multiClubMembers = [];
+    let managerSessions = [];
+    let coachSessions = [];
+    let sharedSessions = [];
+    const updateClubSessions = () => {
+        if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;
+        const sessionsById = new Map([...managerSessions, ...coachSessions, ...sharedSessions].map(session => [session.id, session]));
+        clubSessions = [...sessionsById.values()];
+        refreshCurrentTab();
+        syncAssignedSessionAccess(clubAssignments, clubId, listenerGeneration);
+    };
     const updateClubMembers = () => {
         if(listenerGeneration !== realtimeListenerGeneration || !currentUser || !auth.currentUser) return;
-        const membersById = new Map([...legacyMembers, ...multiClubMembers].map(member => [member.id, member]));
-        if(currentUser && !membersById.has(currentUser.id)) membersById.set(currentUser.id, currentUser);
+        const membersById = new Map(directoryMembers.map(member => [member.id, member]));
+        [...legacyMembers, ...multiClubMembers].forEach(member => {
+            membersById.set(member.id, { ...membersById.get(member.id), ...member });
+        });
+        if(currentUser) membersById.set(currentUser.id, { ...membersById.get(currentUser.id), ...currentUser });
         clubMembers = [...membersById.values()];
         const updatedMe = clubMembers.find(u => u.id === currentUser.id);
-        if(updatedMe && !originalParentUser) currentUser = updatedMe;
+        if(updatedMe && !originalParentUser) {
+            currentUser = {
+                ...currentUser,
+                ...updatedMe,
+                email: currentUser.email,
+                dob: currentUser.dob,
+                profile: currentUser.profile
+            };
+            const currentMemberIndex = clubMembers.findIndex(member => member.id === currentUser.id);
+            clubMembers[currentMemberIndex] = currentUser;
+        }
         refreshCurrentTab();
     };
 
-    listeners.push(db.collection('users').where('clubId', '==', clubId).onSnapshot(snap => {
+    listeners.push(db.collection('clubs').doc(clubId).collection('members').onSnapshot(snap => {
         if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;
-        legacyMembers = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+        directoryMembers = snap.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         updateClubMembers();
     }, error => handleRealtimeListenerError("les membres du club", listenerGeneration, error)));
-    listeners.push(db.collection('users').where('clubIds', 'array-contains', clubId).onSnapshot(snap => {
-        if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;
-        multiClubMembers = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-        updateClubMembers();
-    }, error => handleRealtimeListenerError("les membres du club", listenerGeneration, error)));
+
+    if(hasCoachRights(currentUser, clubId)) {
+        const hydrateMembers = async (documents, source) => {
+            try {
+                const members = await Promise.all(documents.map(async doc => {
+                    const member = { ...doc.data(), id: doc.id };
+                    const legacyPrivateData = {};
+                    ['email', 'dob', 'profile'].forEach(field => {
+                        if(Object.prototype.hasOwnProperty.call(member, field)) {
+                            legacyPrivateData[field] = member[field];
+                        }
+                    });
+                    const privateData = await loadPrivateProfile(member.id);
+                    if(privateData && privateData.profile) member.profile = privateData.profile;
+                    else if(!member.profile) member.profile = getEmptyProfile();
+                    member.email = privateData ? privateData.email : member.email;
+                    member.dob = privateData ? privateData.dob : member.dob;
+                    await backfillClubDirectory(clubId, member, privateData ? null : legacyPrivateData);
+                    return member;
+                }));
+                if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;
+                if(source === 'legacy') legacyMembers = members;
+                else multiClubMembers = members;
+                updateClubMembers();
+            } catch(error) {
+                handleRealtimeListenerError("les profils privés des membres", listenerGeneration, error);
+            }
+        };
+        listeners.push(db.collection('users').where('clubId', '==', clubId).onSnapshot(
+            snap => hydrateMembers(snap.docs, 'legacy'),
+            error => handleRealtimeListenerError("les membres du club", listenerGeneration, error)
+        ));
+        listeners.push(db.collection('users').where('clubIds', 'array-contains', clubId).onSnapshot(
+            snap => hydrateMembers(snap.docs, 'multi'),
+            error => handleRealtimeListenerError("les membres du club", listenerGeneration, error)
+        ));
+    }
 
     if(hasCoachRights(currentUser, clubId)) {
         listeners.push(db.collection('blocks').where('clubId', '==', clubId).onSnapshot(snap => {
@@ -568,15 +1106,38 @@ function startRealtimeListeners(clubId) {
         }, error => handleRealtimeListenerError("les exercices du club", listenerGeneration, error)));
     }
 
-    let sessionsQuery = db.collection('sessions').where('clubId', '==', clubId);
-    if(!hasCoachRights(currentUser, clubId)) sessionsQuery = sessionsQuery.where('isShared', '==', true);
-    listeners.push(sessionsQuery.onSnapshot(snap => {
+    const sessionsCollection = db.collection('sessions');
+    const handleSessionsSnapshot = (snap, source) => {
         if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;
-        const sessionsById = new Map(clubSessions.map(session => [session.id, session]));
-        snap.docs.forEach(doc => sessionsById.set(doc.id, { id: doc.id, ...doc.data() }));
-        clubSessions = [...sessionsById.values()];
-        refreshCurrentTab();
-    }, error => handleRealtimeListenerError("les séances du club", listenerGeneration, error)));
+        const sessions = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if(source === 'manager') managerSessions = sessions;
+        else if(source === 'coach') coachSessions = sessions;
+        else sharedSessions = sessions;
+        updateClubSessions();
+    };
+    if(isClubManager(currentUser, clubId)) {
+        listeners.push(sessionsCollection.where('clubId', '==', clubId).onSnapshot(
+            snap => handleSessionsSnapshot(snap, 'manager'),
+            error => handleRealtimeListenerError("les séances du club", listenerGeneration, error)
+        ));
+    } else if(hasCoachRights(currentUser, clubId)) {
+        listeners.push(sessionsCollection.where('clubId', '==', clubId)
+            .where('authorId', '==', currentUser.id).onSnapshot(
+                snap => handleSessionsSnapshot(snap, 'coach'),
+                error => handleRealtimeListenerError("vos séances", listenerGeneration, error)
+            ));
+        listeners.push(sessionsCollection.where('clubId', '==', clubId)
+            .where('isShared', '==', true).onSnapshot(
+                snap => handleSessionsSnapshot(snap, 'shared'),
+                error => handleRealtimeListenerError("les séances partagées du club", listenerGeneration, error)
+            ));
+    } else {
+        listeners.push(sessionsCollection.where('clubId', '==', clubId)
+            .where('isShared', '==', true).onSnapshot(
+                snap => handleSessionsSnapshot(snap, 'shared'),
+                error => handleRealtimeListenerError("les séances partagées du club", listenerGeneration, error)
+            ));
+    }
 
     let assignmentsQuery = db.collection('assignments').where('clubId', '==', clubId);
     if(!hasCoachRights(currentUser, clubId)) assignmentsQuery = assignmentsQuery.where('athleteId', '==', currentUser.id);
@@ -585,6 +1146,7 @@ function startRealtimeListeners(clubId) {
         clubAssignments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         refreshCurrentTab();
         loadAssignedAthleteSessions(clubAssignments, clubId, listenerGeneration);
+        syncAssignedSessionAccess(clubAssignments, clubId, listenerGeneration);
     }, error => handleRealtimeListenerError("vos attributions de séances", listenerGeneration, error)));
 
     let sentMessages = [];
@@ -707,6 +1269,7 @@ async function register() {
 
     document.getElementById('loader-screen').style.display = 'flex';
     isRegistering = true; 
+    let parentLinkFailed = false;
 
     try {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
@@ -723,39 +1286,46 @@ async function register() {
         }
 
         const age = (new Date() - new Date(dob)) / (1000*60*60*24*365.25);
-        const parentCode = age < 18 ? Math.floor(10000 + Math.random() * 90000).toString() : null;
 
         const newUser = {
             id: user.uid,
-            email: email,
             username,
             role,
             clubId,
             clubIds: [clubId],
             primaryClubId: clubId,
             clubRoles: { [clubId]: isCreatingClub ? 'gerant' : 'athlete' },
-            dob,
-            parentCode,
-            linkedChildren: [],
-            profile: getEmptyProfile()
+            avatar: null
         };
         
+        const createBatch = db.batch();
+        createBatch.set(db.collection('users').doc(newUser.id), newUser);
+        createBatch.set(getPrivateProfileRef(newUser.id), { email, dob, profile: getEmptyProfile() });
+        createBatch.set(getClubDirectoryRef(clubId, newUser.id), getDirectoryEntry(newUser, clubId));
+        await createBatch.commit();
+        if(age < 18) {
+            currentUserParentCode = await ensureParentLinkCode(user.uid);
+        }
         if(age >= 18) {
             const code = document.getElementById('reg-link-code').value.trim();
             if(code) {
-                const childSnap = await db.collection('users').where('parentCode', '==', code).get();
-                if(!childSnap.empty) newUser.linkedChildren.push(childSnap.docs[0].id);
+                try {
+                    await createParentChildLink(user.uid, code, clubId);
+                } catch(error) {
+                    console.error("Erreur de liaison du compte enfant pendant l'inscription:", error);
+                    parentLinkFailed = true;
+                }
             }
         }
-        
-        await db.collection('users').doc(newUser.id).set(newUser);
         
         await user.sendEmailVerification();
         await auth.signOut();
         isRegistering = false; 
         
         document.getElementById('loader-screen').style.display = 'none';
-        alert("Compte créé avec succès ! Un email de vérification vous a été envoyé. Veuillez cliquer sur le lien avant de vous connecter.");
+        alert(parentLinkFailed
+            ? "Compte créé et email de vérification envoyé. La liaison du compte enfant a échoué ; vous pourrez réessayer depuis votre profil après connexion."
+            : "Compte créé avec succès ! Un email de vérification vous a été envoyé. Veuillez cliquer sur le lien avant de vous connecter.");
         switchAuthTab('login');
     } catch (error) {
         isRegistering = false; 
@@ -766,6 +1336,11 @@ async function register() {
     }
 }
 async function login() {
+    if(auth.currentUser) {
+        await startAuthenticatedSession(auth.currentUser);
+        return;
+    }
+
     const email = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
     if (!email || !password) return alert("Veuillez remplir tous les champs.");
@@ -775,7 +1350,12 @@ async function login() {
         await auth.signInWithEmailAndPassword(email, password);
     } catch (error) {
         document.getElementById('loader-screen').style.display = 'none';
-        alert("Email ou mot de passe incorrect.");
+        const message = error.code === 'auth/network-request-failed'
+            ? "Connexion Firebase impossible. Vérifiez votre accès internet, puis réessayez."
+            : error.code === 'auth/too-many-requests'
+                ? "Trop de tentatives. Patientez avant de réessayer."
+                : "Email ou mot de passe incorrect.";
+        alert(message);
     }
 }
 
@@ -796,6 +1376,9 @@ async function logout() {
         await auth.signOut();
         currentUser = null;
         originalParentUser = null;
+        linkedChildIds = [];
+        linkedParentIds = [];
+        currentUserParentCode = null;
         initAuthUI();
     } catch(error) {
         console.error("Erreur de déconnexion:", error);
@@ -806,36 +1389,71 @@ async function logout() {
 
 // === COMPTES LIES ===
 function toggleAccountMenu() {
-    const dd = document.getElementById('account-dropdown'); const realUser = originalParentUser || currentUser;
-    if(realUser.linkedChildren.length === 0 && !originalParentUser) return;
+    const dd = document.getElementById('account-dropdown');
+    if(linkedChildIds.length === 0 && !originalParentUser) return;
     if(dd.style.display === 'block') { dd.style.display = 'none'; return; }
     let html = '';
     if(originalParentUser) html += `<button onclick="switchAccount('${escapeHtml(originalParentUser.id)}')">↩ Retour Parent (${escapeHtml(originalParentUser.username)})</button>`;
-    realUser.linkedChildren.forEach(cId => {
+    linkedChildIds.forEach(cId => {
         const c = clubMembers.find(u=>u.id===cId);
         if(c && c.id !== currentUser.id) html += `<button onclick="switchAccount('${escapeHtml(c.id)}')">👶 Basculer vers ${escapeHtml(c.username)}</button>`;
     });
     dd.innerHTML = html; dd.style.display = 'block';
 }
-function switchAccount(targetId) {
-    const target = clubMembers.find(u=>u.id===targetId);
-    if(!originalParentUser) originalParentUser = currentUser; 
-    if(targetId === originalParentUser.id) originalParentUser = null; 
-    document.getElementById('account-dropdown').style.display = 'none'; 
-    currentUser = target;
+async function switchAccount(targetId) {
+    const parentUser = originalParentUser || currentUser;
+    if(targetId === parentUser.id) {
+        if(!originalParentUser) return;
+        currentUser = originalParentUser;
+        originalParentUser = null;
+        currentUserParentCode = parentLinkCodeCache.get(currentUser.id) || null;
+    } else {
+        if(!linkedChildIds.includes(targetId)) return alert("Ce compte n'est pas lié de manière vérifiée à votre compte.");
+        const target = clubMembers.find(user => user.id === targetId);
+        if(!target) return alert("Le compte enfant n'est pas disponible dans ce club.");
+        const sharedClubId = getUserClubIds(parentUser).find(id => getUserClubIds(target).includes(id));
+        if(!sharedClubId) return alert("Vous et cet enfant devez avoir au moins un club en commun.");
+        originalParentUser = parentUser;
+        currentUser = { ...target, clubId: getUserClubIds(parentUser).includes(parentUser.clubId) &&
+            getUserClubIds(target).includes(parentUser.clubId) ? parentUser.clubId : sharedClubId };
+        try {
+            const privateData = await loadPrivateProfile(targetId);
+            if(!privateData) throw new Error("Le profil privé de l'enfant n'est pas encore migré.");
+            currentUser.email = privateData.email;
+            currentUser.dob = privateData.dob;
+            currentUser.profile = privateData.profile;
+        } catch(error) {
+            originalParentUser = null;
+            currentUser = parentUser;
+            console.error("Erreur de chargement du profil privé de l'enfant:", error);
+            return alert("Impossible d'ouvrir le compte enfant : " + error.message);
+        }
+        currentUserParentCode = null;
+    }
+    document.getElementById('account-dropdown').style.display = 'none';
+    startRealtimeListeners(currentUser.clubId || null);
     showApp();
 }
 function openLinkChildModal() { document.getElementById('input-link-child').value = ''; openModal('modal-link-child'); }
 async function linkChildAccount() {
-    const code = document.getElementById('input-link-child').value.trim();
-    const child = clubMembers.find(u => u.parentCode === code);
-    if(child) {
-        if(!currentUser.linkedChildren.includes(child.id)) {
-            currentUser.linkedChildren.push(child.id);
-            await db.collection('users').doc(currentUser.id).update({ linkedChildren: currentUser.linkedChildren });
-        }
-        alert("Compte lié !"); closeModal('modal-link-child'); showApp();
-    } else alert("Code invalide.");
+    const code = document.getElementById('input-link-child').value.trim().toUpperCase();
+    if(originalParentUser || !auth.currentUser || auth.currentUser.uid !== currentUser.id) {
+        return alert("Revenez au compte parent pour lier un enfant.");
+    }
+    if(!isValidParentLinkCode(code)) return alert("Saisissez le code privé de 10 caractères communiqué par l'enfant.");
+    try {
+        const childId = await createParentChildLink(currentUser.id, code, currentUser.clubId);
+        if(!linkedChildIds.includes(childId)) linkedChildIds.push(childId);
+        alert("Compte lié !");
+        closeModal('modal-link-child');
+        showApp();
+    } catch(error) {
+        console.error("Erreur de liaison du compte enfant:", error);
+        const rulesHint = error.code === 'permission-denied'
+            ? " Les règles Firestore doivent être publiées à jour pour activer la liaison parent-enfant."
+            : "";
+        alert("Impossible de lier le compte : " + error.message + rulesHint);
+    }
 }
 
 // === NAVIGATION ===
@@ -862,7 +1480,7 @@ function showApp() {
     if(!currentUser.clubId) switchTab('athlete-profile');
     const age = (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25);
     const btnLink = document.getElementById('btn-link-child');
-    if(btnLink) btnLink.style.display = age >= 18 ? 'inline-block' : 'none';
+    if(btnLink) btnLink.style.display = age >= 18 && !originalParentUser ? 'inline-block' : 'none';
 }
 function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -875,7 +1493,7 @@ function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
 // === NOTIFICATIONS ===
-function pushNotification(text) {
+async function pushNotification(text) {
     const notif = {
         id: 'notif_' + Date.now(),
         clubId: currentUser.clubId,
@@ -884,7 +1502,12 @@ function pushNotification(text) {
         date: new Date().toLocaleDateString('fr-FR', { hour: '2-digit', minute:'2-digit' }),
         timestamp: Date.now()
     };
-    db.collection('notifications').doc(notif.id).set(notif);
+    try {
+        await db.collection('notifications').doc(notif.id).set(notif);
+    } catch(error) {
+        console.error("Erreur d'enregistrement de la notification:", error);
+        alert("Impossible d'enregistrer la notification : " + error.message);
+    }
 }
 function renderNotifications() {
     const panel = document.getElementById('coach-notifications');
@@ -927,12 +1550,19 @@ function checkNewCategory(s) { if(s.value === '_new_') { openModal('modal-new-ca
 async function saveNewCategory() {
     const c = document.getElementById('new-category-name').value.trim();
     const club = getMyClubObj();
-    if(c && !club.categories.includes(c)) {
-        club.categories.push(c); 
-        await db.collection('clubs').doc(club.id).update({ categories: club.categories });
+    if(!c) return alert("Saisissez un nom de catégorie.");
+    if(club.categories.includes(c)) return alert("Cette catégorie existe déjà.");
+
+    const categories = [...club.categories, c];
+    try {
+        await db.collection('clubs').doc(club.id).update({ categories });
+        club.categories = categories;
         updateCategorySelect();
-        document.getElementById('block-category').value = c; 
+        document.getElementById('block-category').value = c;
         closeModal('modal-new-category');
+    } catch(error) {
+        console.error("Erreur d'enregistrement de la catégorie:", error);
+        alert("Impossible d'ajouter la catégorie : " + error.message);
     }
 }
 
@@ -1000,14 +1630,138 @@ function setBuilderFilter(cat) { currentSessionFilter = cat; buildFilters(); upd
 function updateBuilderBlocksList() {
     const myBlocks = getMyBlocks();
     const filtered = currentSessionFilter === 'Toutes' ? myBlocks : myBlocks.filter(b => b.category === currentSessionFilter);
-    document.getElementById('builder-blocks-list').innerHTML = filtered.map(b => `<div style="background:var(--surface); border:1px solid var(--border-color); padding:1rem; border-radius:var(--radius-md); cursor:pointer;" onclick="addBlockToBuilder('${escapeHtml(b.id)}')"><div style="font-size:0.75rem; color:var(--ffme-blue); font-weight:800; text-transform:uppercase;">${escapeHtml(b.category)}</div><div style="font-weight:700;">${escapeHtml(b.title)}</div></div>`).join('') || "<p style='color:var(--text-muted); font-size:0.85rem; padding:1rem;'>Aucun bloc personnel disponible.</p>";
+    document.getElementById('builder-blocks-list').innerHTML = filtered.map(b => {
+        const firstLines = String(b.description || '').split(/\r?\n/).slice(0, 2).join('\n');
+        return `<div class="builder-block-card">
+            <button type="button" class="builder-block-preview-button" onclick="openBlockPreview('${escapeHtml(b.id)}')">
+                <span class="builder-block-category">${escapeHtml(b.category)}</span>
+                <strong>${escapeHtml(b.title)}</strong>
+                <span class="builder-block-description-preview">${escapeHtml(firstLines) || 'Aucune consigne renseignée.'}</span>
+            </button>
+            <button type="button" class="btn-outline builder-block-add-button" aria-label="Ajouter ${escapeHtml(b.title)} à la séance" onclick="addBlockToBuilder('${escapeHtml(b.id)}')">+</button>
+        </div>`;
+    }).join('') || "<p style='color:var(--text-muted); font-size:0.85rem; padding:1rem;'>Aucun bloc personnel disponible.</p>";
+}
+function openBlockPreview(blockId) {
+    const block = getMyBlocks().find(item => item.id === blockId);
+    if(!block) {
+        alert("Ce bloc n'est plus disponible. Actualisez la liste et réessayez.");
+        updateBuilderBlocksList();
+        return;
+    }
+    viewedBlockId = block.id;
+    document.getElementById('block-preview-category').textContent = block.category || 'Exercice';
+    document.getElementById('block-preview-title').textContent = block.title || 'Exercice sans titre';
+    document.getElementById('block-preview-description').textContent = block.description || 'Aucune consigne renseignée.';
+    openModal('modal-block-preview');
+}
+function addPreviewedBlockToBuilder() {
+    if(!viewedBlockId) return;
+    addBlockToBuilder(viewedBlockId);
+    closeModal('modal-block-preview');
+    viewedBlockId = null;
+}
+function addBlockToBuilder(blockId) {
+    const block = getMyBlocks().find(item => item.id === blockId);
+    if(!block) {
+        alert("Ce bloc n'est plus disponible. Actualisez la liste et réessayez.");
+        updateBuilderBlocksList();
+        return;
+    }
+    builderBlocks.push(block.id);
+    updateBuilderSeq();
+}
+function moveBuilderBlock(fromIndex, toIndex) {
+    if(fromIndex < 0 || fromIndex >= builderBlocks.length || toIndex < 0 || toIndex > builderBlocks.length) return;
+    const [blockId] = builderBlocks.splice(fromIndex, 1);
+    const insertIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+    builderBlocks.splice(insertIndex, 0, blockId);
+    updateBuilderSeq();
+}
+function updateBuilderSeq() {
+    const sequence = document.getElementById('session-sequence');
+    if(!sequence) return;
+    sequence.replaceChildren();
+    if(builderBlocks.length === 0) {
+        const emptyMessage = document.createElement('p');
+        emptyMessage.style.color = 'var(--text-muted)';
+        emptyMessage.textContent = 'Ajoutez des blocs depuis la liste des ressources.';
+        sequence.appendChild(emptyMessage);
+        return;
+    }
+
+    builderBlocks.forEach((blockReference, index) => {
+        const blockId = typeof blockReference === 'string' ? blockReference : blockReference && blockReference.id;
+        const block = clubBlocks.find(item => item.id === blockId);
+        const item = document.createElement('div');
+        item.className = 'draggable-item';
+        item.draggable = true;
+        item.addEventListener('dragstart', event => {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(index));
+        });
+        item.addEventListener('dragover', event => event.preventDefault());
+        item.addEventListener('drop', event => {
+            event.preventDefault();
+            const fromIndex = Number(event.dataTransfer.getData('text/plain'));
+            if(!Number.isInteger(fromIndex)) return;
+            const dropAfter = event.clientY > item.getBoundingClientRect().top + item.offsetHeight / 2;
+            moveBuilderBlock(fromIndex, index + (dropAfter ? 1 : 0));
+        });
+
+        const details = document.createElement('div');
+        const category = document.createElement('div');
+        category.className = 'card-category';
+        category.textContent = block ? block.category || '' : 'Bloc indisponible';
+        const title = document.createElement('div');
+        title.textContent = block ? block.title || '' : `Bloc introuvable (${blockId || 'sans identifiant'})`;
+        details.append(category, title);
+
+        const controls = document.createElement('div');
+        controls.style.display = 'flex';
+        controls.style.gap = '0.25rem';
+        const upButton = document.createElement('button');
+        upButton.type = 'button';
+        upButton.className = 'btn-icon';
+        upButton.textContent = '↑';
+        upButton.setAttribute('aria-label', `Déplacer ${block ? block.title : 'le bloc'} vers le haut`);
+        upButton.disabled = index === 0;
+        upButton.addEventListener('click', () => moveBuilderBlock(index, index - 1));
+        const downButton = document.createElement('button');
+        downButton.type = 'button';
+        downButton.className = 'btn-icon';
+        downButton.textContent = '↓';
+        downButton.setAttribute('aria-label', `Déplacer ${block ? block.title : 'le bloc'} vers le bas`);
+        downButton.disabled = index === builderBlocks.length - 1;
+        downButton.addEventListener('click', () => moveBuilderBlock(index, index + 2));
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className = 'btn-icon';
+        removeButton.textContent = '×';
+        removeButton.setAttribute('aria-label', `Retirer ${block ? block.title : 'le bloc'} de la séance`);
+        removeButton.addEventListener('click', () => {
+            builderBlocks.splice(index, 1);
+            updateBuilderSeq();
+        });
+        controls.append(upButton, downButton, removeButton);
+        item.append(details, controls);
+        sequence.appendChild(item);
+    });
 }
 async function saveSession() {
     const name = document.getElementById('session-name').value.trim();
-    if(!name || builderBlocks.length===0) return;
+    if(!name) return alert("Veuillez donner un nom à la séance.");
+    if(builderBlocks.length === 0) return alert("Ajoutez au moins un bloc à la séance.");
+    if(isSavingSession) return;
 
-    const sessionData = { name, blocks: builderBlocks, clubId: currentUser.clubId };
+    const saveButton = document.getElementById('save-session-button');
+    isSavingSession = true;
+    if(saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = "Enregistrement…";
+    }
     try {
+        const sessionData = { name, blocks: [...builderBlocks], clubId: currentUser.clubId };
         if(editingSessionId) {
             const existingSession = clubSessions.find(session => session.id === editingSessionId);
             if(!canManageClubSession(existingSession)) {
@@ -1033,6 +1787,12 @@ async function saveSession() {
     } catch(error) {
         console.error("Erreur d'enregistrement de la séance:", error);
         alert("Impossible d'enregistrer la séance : " + error.message);
+    } finally {
+        isSavingSession = false;
+        if(saveButton) {
+            saveButton.disabled = false;
+            saveButton.textContent = "Enregistrer la séance";
+        }
     }
 }
 
@@ -1103,6 +1863,9 @@ async function getClubSessionBlockSnapshots(session) {
             );
             block = assignment && assignment.sessionSnapshot.blocks[index];
         }
+        if(!block && blockId && !hasCoachRights(currentUser, session.clubId)) {
+            throw new Error("Cette ancienne séance ne contient pas encore le détail de ses exercices. Demandez au coach de la modifier et de l'enregistrer.");
+        }
         if(!block && blockId) {
             const blockSnap = await db.collection('blocks').doc(blockId).get();
             if(blockSnap.exists) block = { id: blockSnap.id, ...blockSnap.data() };
@@ -1117,11 +1880,17 @@ async function getClubSessionBlockSnapshots(session) {
     }));
 }
 
-function duplicateSession(id) {
+async function duplicateSession(id) {
     const s = clubSessions.find(x => x.id === id);
-    const newSession = { id: 'sess_' + Date.now(), name: s.name + " (Copie)", blocks: [...s.blocks], clubId: currentUser.clubId, authorId: currentUser.id, isShared: false };
-    db.collection('sessions').doc(newSession.id).set(newSession);
-    setSessionLibraryTab('personal'); 
+    if(!s) return alert("Cette séance n'est plus disponible.");
+    const newSession = { id: 'sess_' + Date.now(), name: s.name + " (Copie)", blocks: [...(s.blocks || [])], clubId: currentUser.clubId, authorId: currentUser.id, isShared: false };
+    try {
+        await db.collection('sessions').doc(newSession.id).set(newSession);
+        setSessionLibraryTab('personal');
+    } catch(error) {
+        console.error("Erreur de duplication de la séance:", error);
+        alert("Impossible de dupliquer la séance : " + error.message);
+    }
 }
 async function deleteSession(id) {
     if(!id || id === 'undefined') return alert("Erreur: identifiant de séance introuvable.");
@@ -1157,7 +1926,7 @@ function openEditSession(id) {
         return alert("Seul le coach qui a partagé cette séance ou un gérant du club peut la modifier.");
     }
     document.getElementById('modal-session-title-text').textContent = "Modifier la Séance"; document.getElementById('session-name').value = s.name;
-    builderBlocks = [...s.blocks]; currentSessionFilter = 'Toutes';
+    builderBlocks = (s.blocks || []).map(block => typeof block === 'string' ? block : block && block.id).filter(Boolean); currentSessionFilter = 'Toutes';
     buildFilters(); updateBuilderBlocksList(); updateBuilderSeq(); openModal('modal-create-session');
 }
 
@@ -1242,40 +2011,97 @@ async function publishToClub(id) {
 function openAssignModal(sessId) {
     sessionToAssignId = sessId; 
     const pendingExist = clubAssignments.filter(a => a.sessionId === sessId && !a.isDone);
+    const pendingAthleteIds = new Set(pendingExist.map(assignment => assignment.athleteId));
+    assignmentPendingAthleteIds = pendingAthleteIds;
+    assignmentSelectedIds = new Set();
     
     const grpContainer = document.getElementById('assign-groups-container');
     grpContainer.innerHTML = '';
     const groups = (currentUser.profile.groups || []).filter(g => !g.clubId || g.clubId === currentUser.clubId);
     if(groups.length > 0) {
-        let html = `<h3 style="border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">Groupes</h3>`;
+        let html = `<h3 class="assignment-section-title">Attribuer à un groupe</h3>`;
         groups.forEach(g => {
             html += `
-            <div style="background:var(--surface); border:1px solid var(--border-color); border-radius:var(--radius-md); margin-bottom:0.75rem; padding:1rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
-                    <strong style="font-size:1.1rem; color:var(--ffme-blue);">${escapeHtml(g.name)}</strong>
-                    <button class="btn-outline" style="font-size:0.75rem; padding:0.3rem 0.6rem;" onclick="checkGroupAthletes('${escapeHtml(g.id)}')">Tout cocher</button>
+            <section class="assignment-group-card">
+                <div class="assignment-group-heading">
+                    <strong>${escapeHtml(g.name)}</strong>
+                    <button type="button" class="btn-outline" onclick="checkGroupAthletes('${escapeHtml(g.id)}')">Tout sélectionner</button>
                 </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;" class="group-checkboxes-${g.id}">
-                    ${g.athletes.map(aId => {
-                        const ath = clubMembers.find(u=>u.id===aId); if(!ath) return '';
-                        return `<label style="font-size:0.85rem;"><input type="checkbox" class="athlete-checkbox" value="${escapeHtml(ath.id)}" ${pendingExist.some(ex => ex.athleteId === ath.id)?'disabled checked':''}> ${escapeHtml(ath.username)}</label>`;
-                    }).join('')}
+                <div class="group-member-picker assignment-group-members" data-group-id="${escapeHtml(g.id)}">
+                    ${(g.athletes || []).map(aId => renderAssignmentMemberOption(clubMembers.find(member => member.id === aId), pendingAthleteIds)).filter(Boolean).join('') || '<p class="group-member-empty">Aucun membre de ce groupe dans le club.</p>'}
                 </div>
-            </div>`;
+            </section>`;
         });
         grpContainer.innerHTML = html;
     }
 
-    document.getElementById('athlete-checklist').innerHTML = clubMembers.map(a => `<label style="display:flex; gap:1rem; padding:0.5rem; background:var(--surface); border:1px solid var(--border-color); border-radius:var(--radius-md); margin-bottom:0.5rem; cursor:pointer;"><input type="checkbox" class="athlete-checkbox" value="${escapeHtml(a.id)}" ${pendingExist.some(ex => ex.athleteId === a.id)?'disabled checked':''}> ${escapeHtml(a.username)} (${escapeHtml(a.role)})</label>`).join('');
+    document.getElementById('assignment-member-search').value = '';
+    document.getElementById('athlete-checklist').innerHTML = '';
+    renderAssignmentMemberPicker(pendingAthleteIds);
+    renderAssignmentSelection();
     openModal('modal-assign-session');
 }
 
-function checkGroupAthletes(gId) { document.querySelectorAll(`.group-checkboxes-${gId} input:not(:disabled)`).forEach(cb => cb.checked = true); }
-function selectAllAthletes() { document.querySelectorAll('#athlete-checklist input:not(:disabled)').forEach(cb => cb.checked = true); }
+function renderAssignmentMemberOption(member, pendingAthleteIds) {
+    if(!member) return '';
+    const isPending = pendingAthleteIds.has(member.id);
+    const avatar = member.avatar
+        ? `<img src="${escapeHtml(member.avatar)}" alt="" class="group-member-avatar">`
+        : '<span class="group-member-avatar group-member-avatar-placeholder" aria-hidden="true">👤</span>';
+    return `<label class="group-member-option assignment-member-option ${assignmentSelectedIds.has(member.id) ? 'selected' : ''} ${isPending ? 'assignment-member-pending' : ''}" data-member-name="${escapeHtml(member.username || '')}">
+        <input type="checkbox" class="athlete-checkbox" value="${escapeHtml(member.id)}" ${assignmentSelectedIds.has(member.id) || isPending ? 'checked' : ''} ${isPending ? 'disabled' : ''} onchange="updateAssignmentSelection(this)">
+        ${avatar}
+        <span class="group-member-details"><strong>${escapeHtml(member.username || 'Membre')}</strong><small>${escapeHtml(getRoleLabel(getClubRole(member, currentUser.clubId)))}</small></span>
+        <span class="group-member-checkmark" aria-hidden="true">✓</span>
+    </label>`;
+}
+
+function renderAssignmentMemberPicker(pendingAthleteIds = assignmentPendingAthleteIds) {
+    const container = document.getElementById('athlete-checklist');
+    const search = document.getElementById('assignment-member-search');
+    if(!container || !search) return;
+    const query = search.value.trim().toLocaleLowerCase('fr-FR');
+    const visibleMembers = clubMembers.filter(member =>
+        String(member.username || '').toLocaleLowerCase('fr-FR').includes(query)
+    );
+    container.innerHTML = visibleMembers.map(member => renderAssignmentMemberOption(member, pendingAthleteIds)).join('') ||
+        '<p class="group-member-empty">Aucun membre ne correspond à cette recherche.</p>';
+}
+
+function renderAssignmentSelection() {
+    document.querySelectorAll('#modal-assign-session .athlete-checkbox').forEach(checkbox => {
+        if(checkbox.disabled) return;
+        checkbox.checked = assignmentSelectedIds.has(checkbox.value);
+        checkbox.closest('.assignment-member-option').classList.toggle('selected', checkbox.checked);
+    });
+    const count = document.getElementById('assignment-member-count');
+    if(count) {
+        const selectedCount = assignmentSelectedIds.size;
+        count.textContent = `${selectedCount} sélectionné${selectedCount > 1 ? 's' : ''}`;
+    }
+}
+
+function updateAssignmentSelection(checkbox) {
+    if(checkbox.checked) assignmentSelectedIds.add(checkbox.value);
+    else assignmentSelectedIds.delete(checkbox.value);
+    renderAssignmentSelection();
+}
+
+function checkGroupAthletes(gId) {
+    const groupPicker = [...document.querySelectorAll('.assignment-group-members')]
+        .find(container => container.dataset.groupId === gId);
+    if(!groupPicker) return;
+    groupPicker.querySelectorAll('.athlete-checkbox:not(:disabled)').forEach(checkbox => assignmentSelectedIds.add(checkbox.value));
+    renderAssignmentSelection();
+}
+
+function selectAllAthletes() {
+    document.querySelectorAll('#athlete-checklist .athlete-checkbox:not(:disabled)').forEach(checkbox => assignmentSelectedIds.add(checkbox.value));
+    renderAssignmentSelection();
+}
 
 async function saveAssignments() { 
-    let selectedIds = new Set();
-    document.querySelectorAll('.athlete-checkbox:checked:not(:disabled)').forEach(cb => selectedIds.add(cb.value));
+    const selectedIds = assignmentSelectedIds;
     if(selectedIds.size === 0) return alert("Sélectionnez au moins un membre.");
     const session = clubSessions.find(item => item.id === sessionToAssignId);
     if(!session) return alert("Cette séance n'est plus disponible dans la banque.");
@@ -1283,6 +2109,9 @@ async function saveAssignments() {
     try {
         const sessionSnapshot = await createAssignedSessionSnapshot(session);
         const batch = db.batch();
+        batch.update(db.collection('sessions').doc(sessionToAssignId), {
+            assignedAthleteIds: firebase.firestore.FieldValue.arrayUnion(...selectedIds)
+        });
         selectedIds.forEach(id => {
             const assRef = db.collection('assignments').doc();
             batch.set(assRef, {
@@ -1329,8 +2158,8 @@ function renderGroupMemberPicker() {
     );
     count.textContent = `${groupEditorSelectedIds.size} sélectionné${groupEditorSelectedIds.size > 1 ? 's' : ''}`;
     container.innerHTML = visibleMembers.map(member => {
-        const avatar = member.profile && member.profile.avatar
-            ? `<img src="${escapeHtml(member.profile.avatar)}" alt="" class="group-member-avatar">`
+        const avatar = member.avatar
+            ? `<img src="${escapeHtml(member.avatar)}" alt="" class="group-member-avatar">`
             : `<span class="group-member-avatar group-member-avatar-placeholder" aria-hidden="true">👤</span>`;
         return `<label class="group-member-option ${groupEditorSelectedIds.has(member.id) ? 'selected' : ''}">
             <input type="checkbox" class="new-grp-cb" value="${escapeHtml(member.id)}" ${groupEditorSelectedIds.has(member.id) ? 'checked' : ''} onchange="updateGroupMemberSelection(this)">
@@ -1456,11 +2285,17 @@ function cancelGroupEdit() {
 
 async function deleteGroup(gId) {
     if(!await showAppConfirm("Supprimer ce groupe ?")) return;
-    currentUser.profile.groups = currentUser.profile.groups.filter(g => g.id !== gId);
-    await db.collection('users').doc(currentUser.id).update({ 'profile.groups': currentUser.profile.groups });
-    if(editingGroupId === gId) resetGroupEditor();
-    renderManageGroupsList();
-    renderCoachAthletes();
+    const groups = (currentUser.profile.groups || []).filter(group => group.id !== gId);
+    try {
+        await savePrivateProfile(currentUser.id, { 'profile.groups': groups });
+        currentUser.profile.groups = groups;
+        if(editingGroupId === gId) resetGroupEditor();
+        renderManageGroupsList();
+        renderCoachAthletes();
+    } catch(error) {
+        console.error("Erreur de suppression du groupe:", error);
+        alert("Impossible de supprimer le groupe : " + error.message);
+    }
 }
 
 async function saveNewGroup() {
@@ -1486,7 +2321,7 @@ async function saveNewGroup() {
     const saveButton = document.getElementById('btn-save-group');
     saveButton.disabled = true;
     try {
-        await db.collection('users').doc(currentUser.id).update({ 'profile.groups': groups });
+        await savePrivateProfile(currentUser.id, { 'profile.groups': groups });
         currentUser.profile.groups = groups;
         resetGroupEditor();
         renderManageGroupsList();
@@ -1525,7 +2360,7 @@ async function toggleGroupAlerts(groupId) {
     const updatedGroup = { ...groups[groupIndex], notify: !groups[groupIndex].notify };
     groups[groupIndex] = updatedGroup;
     try {
-        await db.collection('users').doc(currentUser.id).update({ 'profile.groups': groups });
+        await savePrivateProfile(currentUser.id, { 'profile.groups': groups });
         currentUser.profile.groups = groups;
         renderCoachAthletes();
         if(document.getElementById('modal-manage-groups').style.display === 'flex') renderManageGroupsList();
@@ -1604,7 +2439,7 @@ function showAthletesGrid(groupId) {
         const pending = clubAssignments.filter(a => a.athleteId === ath.id && !a.isDone).length;
         let badge = pending > 0 ? `<span class="status-badge status-done">${pending} attente</span>` : `<span class="status-badge status-alert">0 séance</span>`;
         let avatarHtml = `<div style="font-size:2rem; margin-bottom:0.5rem; width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:var(--bg-color); border-radius:50%;">👤</div>`;
-        if(ath.profile && ath.profile.avatar) avatarHtml = `<img src="${escapeHtml(ath.profile.avatar)}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; margin-bottom:0.5rem;">`;
+        if(ath.avatar) avatarHtml = `<img src="${escapeHtml(ath.avatar)}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; margin-bottom:0.5rem;">`;
         return `<div class="card interactive" style="align-items:center; text-align:center;" onclick="openAthleteProfileCoach('${escapeHtml(ath.id)}')">${avatarHtml}<div class="card-title">${escapeHtml(ath.username)} <span style="font-size:0.8rem; opacity:0.7;">(${escapeHtml(getRoleLabel(getClubRole(ath, currentUser.clubId)))})</span></div><div>${badge}</div></div>`;
     }).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center;'>Aucun membre dans cette liste.</p>";
 }
@@ -1842,8 +2677,8 @@ function renderAthleteClubMembers() {
         .filter(member => (member.username || '').toLocaleLowerCase('fr').includes(athleteClubMemberSearch))
         .sort((a, b) => (a.username || '').localeCompare(b.username || '', 'fr'));
     grid.innerHTML = members.map(member => {
-        const avatar = member.profile && member.profile.avatar
-            ? `<img src="${escapeHtml(member.profile.avatar)}" alt="" class="athlete-club-member-avatar">`
+        const avatar = member.avatar
+            ? `<img src="${escapeHtml(member.avatar)}" alt="" class="athlete-club-member-avatar">`
             : `<div class="athlete-club-member-avatar athlete-club-member-placeholder" aria-hidden="true">👤</div>`;
         return `<article class="card athlete-club-member-card">
                     ${avatar}
@@ -1929,7 +2764,27 @@ async function deleteAssignment(assId, fromCoachHistory = false) {
             : "Supprimer cette séance de votre liste ?";
     if(!await showAppConfirm(confirmation)) return;
     try {
-        await db.collection('assignments').doc(assId).delete();
+        const remainingAssignments = clubAssignments.some(item =>
+            item.id !== assId &&
+            item.sessionId === assignment.sessionId &&
+            item.athleteId === assignment.athleteId
+        );
+        const batch = db.batch();
+        batch.delete(db.collection('assignments').doc(assId));
+        const revokeSessionAccess = !remainingAssignments && (hasCoachRights() || assignment.sessionSnapshot);
+        if(revokeSessionAccess) {
+            const sessionRef = db.collection('sessions').doc(assignment.sessionId);
+            batch.update(sessionRef, {
+                assignedAthleteIds: firebase.firestore.FieldValue.arrayRemove(assignment.athleteId)
+            });
+        }
+        try {
+            await batch.commit();
+        } catch(error) {
+            if(!revokeSessionAccess || !['permission-denied', 'not-found'].includes(error.code)) throw error;
+            console.warn("L'accès à la séance n'a pas pu être retiré ; suppression de l'attribution seule.", error);
+            await db.collection('assignments').doc(assId).delete();
+        }
         clubAssignments = clubAssignments.filter(x => x.id !== assId);
         renderAthleteSessions();
         if(fromCoachHistory) renderCoachAthleteHistory();
@@ -2026,20 +2881,25 @@ document.getElementById('btn-validate-session').onclick = async function() {
 
     const avgRpe = rpeCount > 0 ? (rpeSum / rpeCount) : difficulte;
 
-    await db.collection('assignments').doc(a.id).update({
-        isDone: true,
-        doneAt: Date.now(),
-        annotation: annotation,
-        plaisir: plaisir,
-        difficulte: difficulte,
-        fatigue: fatigue,
-        blockRpes: blockRpes,
-        avgRpe: avgRpe
-    });
+    try {
+        await db.collection('assignments').doc(a.id).update({
+            isDone: true,
+            doneAt: Date.now(),
+            annotation: annotation,
+            plaisir: plaisir,
+            difficulte: difficulte,
+            fatigue: fatigue,
+            blockRpes: blockRpes,
+            avgRpe: avgRpe
+        });
 
-    closeModal('modal-view-session');
-    refreshCurrentTab();
-    alert("Séance enregistrée avec succès !");
+        closeModal('modal-view-session');
+        refreshCurrentTab();
+        alert("Séance enregistrée avec succès !");
+    } catch(error) {
+        console.error("Erreur d'enregistrement du bilan de séance:", error);
+        alert("Impossible d'enregistrer le bilan de séance : " + error.message);
+    }
 };
 
 // --- ATHLETE PROFIL & AVATAR ---
@@ -2049,20 +2909,45 @@ function renderAthleteProfile() {
     
     const pre = document.getElementById('profile-avatar-preview');
     const pla = document.getElementById('profile-avatar-placeholder');
-    if (currentUser.profile.avatar) {
-        pre.src = currentUser.profile.avatar; pre.style.display = 'block'; pla.style.display = 'none';
+    const avatar = currentUser.avatar || currentUser.profile.avatar;
+    if (avatar) {
+        pre.src = avatar; pre.style.display = 'block'; pla.style.display = 'none';
     } else { pre.style.display = 'none'; pla.style.display = 'block'; }
 
     const pCode = document.getElementById('profile-parent-code-display');
-    if(currentUser.parentCode) { pCode.innerHTML = `<div class="parent-code-badge">Code Enfant : ${escapeHtml(currentUser.parentCode)}</div>`; pCode.style.display = 'block'; }
-    else { pCode.style.display = 'none'; }
+    const isOwnAccount = !originalParentUser && auth.currentUser && auth.currentUser.uid === currentUser.id;
+    const age = currentUser.dob
+        ? (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25)
+        : 18;
+    if(isOwnAccount && (age < 18 || currentUserParentCode)) {
+        pCode.innerHTML = currentUserParentCode
+            ? `<div class="parent-code-badge">Code parent (10 caractères) : <code>${escapeHtml(currentUserParentCode)}</code></div><button class="btn-outline" style="margin-top:0.4rem;" onclick="copyParentLinkCode()">Copier le code</button><small class="form-hint">Code à usage unique. Après son utilisation, reconnectez-vous pour en générer un nouveau.</small>`
+            : '<button class="btn-outline" onclick="generateParentLinkCode()">Créer mon code parent</button>';
+        pCode.style.display = 'block';
+    } else {
+        pCode.style.display = 'none';
+    }
     
     const childrenList = document.getElementById('profile-linked-children-list');
-    if(currentUser.linkedChildren && currentUser.linkedChildren.length > 0) {
-        childrenList.innerHTML = "Enfants liés : " + currentUser.linkedChildren.map(cId => {
-            const c = clubMembers.find(u=>u.id===cId); return c ? `<span style="background:var(--bg-color); padding:2px 6px; border-radius:4px; font-weight:600;">${escapeHtml(c.username)}</span>` : '';
-        }).join('');
-    } else { childrenList.innerHTML = ''; }
+    const linkedChildrenMarkup = !originalParentUser && linkedChildIds.length > 0
+        ? "Enfants liés : " + linkedChildIds.map(childId => {
+            const child = clubMembers.find(user => user.id === childId);
+            return `<span style="background:var(--bg-color); padding:2px 6px; border-radius:4px; font-weight:600;">${escapeHtml(child ? child.username : 'Enfant')} <button class="btn-icon" title="Délier ce compte" aria-label="Délier ce compte" onclick="unlinkChildAccount('${escapeHtml(childId)}')">×</button></span>`;
+        }).join('')
+        : '';
+    const linkedParentsMarkup = isOwnAccount && linkedParentIds.length > 0
+        ? "Parents liés : " + linkedParentIds.map(parentId => {
+            const parent = clubMembers.find(user => user.id === parentId);
+            return `<span style="background:var(--bg-color); padding:2px 6px; border-radius:4px; font-weight:600;">${escapeHtml(parent ? parent.username : 'Parent')} <button class="btn-icon" title="Délier ce compte parent" aria-label="Délier ce compte parent" onclick="unlinkParentAccount('${escapeHtml(parentId)}')">×</button></span>`;
+        }).join('')
+        : '';
+    const hasUnverifiedLegacyLinks = !originalParentUser &&
+        Array.isArray(currentUser.linkedChildren) &&
+        currentUser.linkedChildren.some(childId => !linkedChildIds.includes(childId));
+    const revalidationNotice = hasUnverifiedLegacyLinks
+        ? '<p class="form-hint">Pour protéger les comptes, les anciennes liaisons doivent être renouvelées : demandez à chaque enfant de se connecter et de vous transmettre son nouveau code privé.</p>'
+        : '';
+    childrenList.innerHTML = linkedChildrenMarkup + linkedParentsMarkup + revalidationNotice;
 
     renderProfileClubs();
     renderMyRoleRequests();
@@ -2085,31 +2970,139 @@ function renderAthleteProfile() {
     selectedUserIdForCalendar = currentUser.id; renderCalendar('athlete-calendar-container');
 }
 
-async function saveProfileObjectives() { 
-    currentUser.profile.objectives = document.getElementById('profile-objectives').value.trim(); 
-    await db.collection('users').doc(currentUser.id).update({ 'profile.objectives': currentUser.profile.objectives });
-    alert("Objectifs sauvegardés."); 
+async function generateParentLinkCode() {
+    if(originalParentUser || !auth.currentUser || auth.currentUser.uid !== currentUser.id) {
+        return alert("Seul le titulaire du compte enfant peut créer son code privé.");
+    }
+    try {
+        currentUserParentCode = await ensureParentLinkCode(currentUser.id, currentUser.parentCode);
+        renderAthleteProfile();
+    } catch(error) {
+        console.error("Erreur de création du code parent:", error);
+        const rulesHint = error.code === 'permission-denied'
+            ? " Les nouvelles règles Firestore doivent être publiées avant de générer un code."
+            : "";
+        alert("Impossible de créer le code parent : " + error.message + rulesHint);
+    }
+}
+
+async function copyParentLinkCode() {
+    if(!currentUserParentCode) return;
+    try {
+        await navigator.clipboard.writeText(currentUserParentCode);
+        alert("Code de 10 caractères copié. Transmettez-le uniquement au parent concerné.");
+    } catch(error) {
+        console.error("Erreur de copie du code parent:", error);
+        alert("Copie impossible. Sélectionnez et copiez le code affiché.");
+    }
+}
+
+async function unlinkChildAccount(childId) {
+    if(originalParentUser || !auth.currentUser || auth.currentUser.uid !== currentUser.id ||
+        !linkedChildIds.includes(childId)) {
+        return alert("Cette liaison ne peut pas être retirée depuis le compte actuel.");
+    }
+    if(!await showAppConfirm("Retirer l'accès parent à ce compte enfant ?")) return;
+    try {
+        await removeParentChildLink(currentUser.id, childId);
+        linkedChildIds = linkedChildIds.filter(id => id !== childId);
+        renderAthleteProfile();
+    } catch(error) {
+        console.error("Erreur de suppression de la liaison parent-enfant:", error);
+        alert("Impossible de délier ce compte : " + error.message);
+    }
+}
+
+async function unlinkParentAccount(parentId) {
+    if(originalParentUser || !auth.currentUser || auth.currentUser.uid !== currentUser.id ||
+        !linkedParentIds.includes(parentId)) {
+        return alert("Cette liaison ne peut pas être retirée depuis le compte actuel.");
+    }
+    if(!await showAppConfirm("Retirer l'accès de ce parent à votre compte ?")) return;
+    try {
+        await removeParentChildLink(parentId, currentUser.id);
+        linkedParentIds = linkedParentIds.filter(id => id !== parentId);
+        renderAthleteProfile();
+    } catch(error) {
+        console.error("Erreur de suppression de la liaison parent-enfant:", error);
+        alert("Impossible de délier ce parent : " + error.message);
+    }
+}
+
+async function saveProfileObjectives() {
+    const objectives = document.getElementById('profile-objectives').value.trim();
+    try {
+        await savePrivateProfile(currentUser.id, { 'profile.objectives': objectives });
+        currentUser.profile.objectives = objectives;
+        alert("Objectifs sauvegardés.");
+    } catch(error) {
+        console.error("Erreur d'enregistrement des objectifs:", error);
+        alert("Impossible d'enregistrer les objectifs : " + error.message);
+    }
 }
         
-function handleAvatarUpload(e) {
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-        const img = new Image();
-        img.onload = async function() {
-            const canvas = document.createElement('canvas'); const size = 250;
-            canvas.width = size; canvas.height = size; const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, size, size);
-            const minDim = Math.min(img.width, img.height);
-            const sx = (img.width - minDim) / 2; const sy = (img.height - minDim) / 2;
-            ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
-            currentUser.profile.avatar = canvas.toDataURL('image/jpeg', 0.8);
-            
-            await db.collection('users').doc(currentUser.id).update({ 'profile.avatar': currentUser.profile.avatar });
-        }
-        img.src = ev.target.result;
+async function handleAvatarUpload(event) {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    input.value = '';
+    if(!file) return;
+    if(!file.type.startsWith('image/')) return alert("Sélectionnez un fichier image.");
+    if(file.size > 5 * 1024 * 1024) return alert("La photo ne peut pas dépasser 5 Mo.");
+
+    try {
+        const avatar = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = () => reject(new Error("Impossible de lire l'image."));
+            reader.onload = () => {
+                const image = new Image();
+                image.onerror = () => reject(new Error("Le fichier sélectionné n'est pas une image valide."));
+                image.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const size = 250;
+                    canvas.width = size;
+                    canvas.height = size;
+                    const context = canvas.getContext('2d');
+                    if(!context) {
+                        reject(new Error("Impossible de traiter cette image."));
+                        return;
+                    }
+                    context.fillStyle = '#FFFFFF';
+                    context.fillRect(0, 0, size, size);
+                    const minDimension = Math.min(image.width, image.height);
+                    context.drawImage(
+                        image,
+                        (image.width - minDimension) / 2,
+                        (image.height - minDimension) / 2,
+                        minDimension,
+                        minDimension,
+                        0,
+                        0,
+                        size,
+                        size
+                    );
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                image.src = reader.result;
+            };
+            reader.readAsDataURL(file);
+        });
+        const batch = db.batch();
+        batch.update(db.collection('users').doc(currentUser.id), { avatar });
+        batch.update(getPrivateProfileRef(currentUser.id), { 'profile.avatar': avatar });
+        getUserClubIds(currentUser).forEach(clubId => {
+            batch.set(getClubDirectoryRef(clubId, currentUser.id), {
+                ...getDirectoryEntry({ ...currentUser, avatar }, clubId),
+                avatar
+            });
+        });
+        await batch.commit();
+        currentUser.avatar = avatar;
+        currentUser.profile.avatar = avatar;
+        renderAthleteProfile();
+    } catch(error) {
+        console.error("Erreur de mise à jour de la photo de profil:", error);
+        alert("Impossible de modifier la photo de profil : " + error.message);
     }
-    reader.readAsDataURL(file);
 }
 
 async function handleClubAvatarUpload(event) {
@@ -2178,26 +3171,37 @@ async function saveCompetition() {
     const feeling = document.getElementById('comp-feeling').value.trim();
     if(!type) return alert("Veuillez indiquer le type de compétition.");
     
-    if(!currentUser.profile.competitions) currentUser.profile.competitions = [];
-    
-    if(editingCompIndex !== null && currentUser.profile.competitions[editingCompIndex]) {
-        currentUser.profile.competitions[editingCompIndex].type = type;
-        currentUser.profile.competitions[editingCompIndex].place = place;
-        currentUser.profile.competitions[editingCompIndex].feeling = feeling;
+    const competitions = [...(currentUser.profile.competitions || [])];
+    if(editingCompIndex !== null && competitions[editingCompIndex]) {
+        competitions[editingCompIndex] = { ...competitions[editingCompIndex], type, place, feeling };
     } else {
-        currentUser.profile.competitions.push({ type, place, feeling, date: Date.now() });
+        competitions.push({ type, place, feeling, date: Date.now() });
     }
-    
-    await db.collection('users').doc(currentUser.id).update({ 'profile.competitions': currentUser.profile.competitions });
-    closeModal('modal-competition'); 
-    renderAthleteProfile();
+
+    try {
+        await savePrivateProfile(currentUser.id, { 'profile.competitions': competitions });
+        currentUser.profile.competitions = competitions;
+        closeModal('modal-competition');
+        renderAthleteProfile();
+    } catch(error) {
+        console.error("Erreur d'enregistrement de la compétition:", error);
+        alert("Impossible d'enregistrer la compétition : " + error.message);
+    }
 }
 
 async function deleteCompetition(idx) {
     if(!await showAppConfirm("Êtes-vous sûr de vouloir supprimer cette compétition ?")) return;
-    currentUser.profile.competitions.splice(idx, 1);
-    await db.collection('users').doc(currentUser.id).update({ 'profile.competitions': currentUser.profile.competitions });
-    renderAthleteProfile();
+    const competitions = [...(currentUser.profile.competitions || [])];
+    if(idx < 0 || idx >= competitions.length) return alert("Cette compétition n'est plus disponible.");
+    competitions.splice(idx, 1);
+    try {
+        await savePrivateProfile(currentUser.id, { 'profile.competitions': competitions });
+        currentUser.profile.competitions = competitions;
+        renderAthleteProfile();
+    } catch(error) {
+        console.error("Erreur de suppression de la compétition:", error);
+        alert("Impossible de supprimer la compétition : " + error.message);
+    }
 }
 
 // SKILLS
@@ -2205,11 +3209,20 @@ function openSkillsModal() {
     const buildRange = (themes, obj, containerId) => { document.getElementById(containerId).innerHTML = themes.map(t => `<div style="display:flex; flex-direction:column;"><label style="font-size:0.85rem; font-weight:600;">${t} (<b>${obj[t]||0}</b>)</label><input type="range" class="rpe-slider" min="0" max="10" value="${obj[t]||0}" oninput="this.previousElementSibling.querySelector('b').textContent = this.value" data-theme="${t}"></div>`).join(''); };
     buildRange(themes1, currentUser.profile.skillsT1, 'skills-form-t1'); buildRange(themes2, currentUser.profile.skillsT2, 'skills-form-t2'); openModal('modal-skills');
 }
-async function saveSkills() { 
-    document.querySelectorAll('#skills-form-t1 input').forEach(inp => currentUser.profile.skillsT1[inp.dataset.theme] = parseInt(inp.value)); 
-    document.querySelectorAll('#skills-form-t2 input').forEach(inp => currentUser.profile.skillsT2[inp.dataset.theme] = parseInt(inp.value)); 
-    await db.collection('users').doc(currentUser.id).update({ 'profile.skillsT1': currentUser.profile.skillsT1, 'profile.skillsT2': currentUser.profile.skillsT2 });
-    closeModal('modal-skills'); 
+async function saveSkills() {
+    const skillsT1 = { ...currentUser.profile.skillsT1 };
+    const skillsT2 = { ...currentUser.profile.skillsT2 };
+    document.querySelectorAll('#skills-form-t1 input').forEach(input => skillsT1[input.dataset.theme] = parseInt(input.value));
+    document.querySelectorAll('#skills-form-t2 input').forEach(input => skillsT2[input.dataset.theme] = parseInt(input.value));
+    try {
+        await savePrivateProfile(currentUser.id, { 'profile.skillsT1': skillsT1, 'profile.skillsT2': skillsT2 });
+        currentUser.profile.skillsT1 = skillsT1;
+        currentUser.profile.skillsT2 = skillsT2;
+        closeModal('modal-skills');
+    } catch(error) {
+        console.error("Erreur d'enregistrement des compétences:", error);
+        alert("Impossible d'enregistrer les compétences : " + error.message);
+    }
 }
 function renderRadarChart(canvasId, dataObj, label, color) {
     const ctx = document.getElementById(canvasId).getContext('2d');
@@ -2259,7 +3272,7 @@ function renderRadarChart(canvasId, dataObj, label, color) {
 // CALENDAR
 function renderCalendar(containerId) {
     const targetUser = clubMembers.find(x => x.id === selectedUserIdForCalendar);
-    const cal = targetUser.profile.calendar || {};
+    const cal = (targetUser.profile && targetUser.profile.calendar) || {};
     const dStr = (d) => `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const days = new Date(currentYear, currentMonth + 1, 0).getDate();
     let start = new Date(currentYear, currentMonth, 1).getDay(); start = start === 0 ? 6 : start - 1; 
@@ -2286,7 +3299,7 @@ function changeMonth(delta, cid) { currentMonth += delta; if(currentMonth < 0) {
 
 function openCalNote(dateStr) {
     selectedDateForNote = dateStr; const targetUser = clubMembers.find(u => u.id === selectedUserIdForCalendar);
-    const data = (targetUser.profile.calendar && targetUser.profile.calendar[dateStr]) || {};
+    const data = (targetUser.profile && targetUser.profile.calendar && targetUser.profile.calendar[dateStr]) || {};
     document.getElementById('cal-note-status').value = data.active ? "true" : "false"; document.getElementById('cal-note-text').value = data.note || '';
     const select = document.getElementById('cal-note-session'); 
     select.innerHTML = '<option value="">-- Aucune séance --</option>';
@@ -2300,21 +3313,40 @@ function openCalNote(dateStr) {
 }
 async function saveCalendarNote() {
     const u = clubMembers.find(x => x.id === selectedUserIdForCalendar);
+    if(!u) return alert("Le membre concerné n'est plus disponible.");
     const isAct = document.getElementById('cal-note-status').value==="true"; const note = document.getElementById('cal-note-text').value.trim(); const assignId = document.getElementById('cal-note-session').value;
-    if(!isAct && !note && !assignId) { delete u.profile.calendar[selectedDateForNote]; } 
-    else { u.profile.calendar[selectedDateForNote] = { active: isAct, note: note, assignmentId: assignId || null }; }
-    
-    await db.collection('users').doc(u.id).update({ 'profile.calendar': u.profile.calendar });
-    closeModal('modal-calendar-note'); 
+    const calendar = { ...((u.profile && u.profile.calendar) || {}) };
+    if(!isAct && !note && !assignId) delete calendar[selectedDateForNote];
+    else calendar[selectedDateForNote] = { active: isAct, note, assignmentId: assignId || null };
+
+    try {
+        await savePrivateProfile(u.id, { 'profile.calendar': calendar });
+        u.profile.calendar = calendar;
+        if(currentUser.id === u.id) currentUser.profile.calendar = calendar;
+        closeModal('modal-calendar-note');
+        refreshCurrentTab();
+    } catch(error) {
+        console.error("Erreur d'enregistrement de la note du calendrier:", error);
+        alert("Impossible d'enregistrer cette note : " + error.message);
+    }
 }
 
 // TIMER
 let timerInterval = null; let timeRemaining = 0; let isWorkPhase = true; let currentRound = 1;
-function updateTimerDisplay() { const m = Math.floor(timeRemaining/60).toString().padStart(2,'0'); const s = (timeRemaining%60).toString().padStart(2,'0'); document.getElementById('timer-display').textContent = `${m}:${s}`; }
+function updateTimerDisplay() {
+    const m = Math.floor(timeRemaining/60).toString().padStart(2,'0');
+    const s = (timeRemaining%60).toString().padStart(2,'0');
+    document.getElementById('timer-display').textContent = `${m}:${s}`;
+    const timer = document.getElementById('chrono-container');
+    const phaseLabel = document.getElementById('timer-phase');
+    if(timer) timer.dataset.phase = isWorkPhase ? 'work' : 'rest';
+    if(phaseLabel) phaseLabel.textContent = isWorkPhase ? 'Travail' : 'Repos';
+}
 function startTimer() {
     if(timerInterval) return; 
     const w = parseInt(document.getElementById('timer-work').value)||10; const r = parseInt(document.getElementById('timer-rest').value)||20; const totalRounds = parseInt(document.getElementById('timer-rounds').value)||5;
     if(timeRemaining === 0) { timeRemaining = w; isWorkPhase = true; currentRound = 1; }
+    updateTimerDisplay();
     timerInterval = setInterval(() => {
         timeRemaining--;
         if(timeRemaining < 0) { if(isWorkPhase) { isWorkPhase = false; timeRemaining = r; } else { isWorkPhase = true; timeRemaining = w; currentRound++; if(currentRound > totalRounds) { resetTimer(); return alert("Terminé !"); } } }
@@ -2322,7 +3354,17 @@ function startTimer() {
     }, 1000);
 }
 function pauseTimer() { clearInterval(timerInterval); timerInterval = null; }
-function resetTimer() { pauseTimer(); timeRemaining = 0; document.getElementById('timer-display').textContent = "00:00"; }
+function resetTimer() {
+    pauseTimer();
+    timeRemaining = 0;
+    isWorkPhase = true;
+    currentRound = 1;
+    document.getElementById('timer-display').textContent = "00:00";
+    const timer = document.getElementById('chrono-container');
+    const phaseLabel = document.getElementById('timer-phase');
+    if(timer) timer.dataset.phase = 'work';
+    if(phaseLabel) phaseLabel.textContent = 'Prêt à travailler';
+}
 
 // --- MESSAGERIE CHAT ---
 function toggleChatFullscreen() { document.getElementById('global-chat-panel').classList.toggle('fullscreen'); }
@@ -2360,7 +3402,7 @@ function showChatList() {
 
     const renderUser = (uId, lastMsgStr = '') => {
         const u = clubMembers.find(x=>x.id===uId); if(!u) return '';
-        let avatar = u.profile.avatar ? `<img src="${escapeHtml(u.profile.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : '👤';
+        let avatar = u.avatar ? `<img src="${escapeHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : '👤';
         return `<div class="chat-user-item" onclick="openConversation('${escapeHtml(u.id)}')">
                     <div class="avatar">${avatar}</div>
                     <div class="details"><span class="name">${escapeHtml(u.username)}</span><span class="role">${escapeHtml(getRoleLabel(getClubRole(u)))}</span>${lastMsgStr ? `<span class="last-msg">${escapeHtml(lastMsgStr)}</span>` : ''}</div>
@@ -2415,10 +3457,19 @@ function openCoachSettingsModal() {
     openModal('modal-coach-settings'); 
 }
 
-async function saveCoachSettings() { 
-    currentUser.profile.settings.autoMessageDisabled = document.getElementById('coach-setting-automessage').checked; 
-    await db.collection('users').doc(currentUser.id).update({ 'profile.settings': currentUser.profile.settings });
-    closeModal('modal-coach-settings'); 
+async function saveCoachSettings() {
+    const settings = {
+        ...(currentUser.profile.settings || {}),
+        autoMessageDisabled: document.getElementById('coach-setting-automessage').checked
+    };
+    try {
+        await savePrivateProfile(currentUser.id, { 'profile.settings': settings });
+        currentUser.profile.settings = settings;
+        closeModal('modal-coach-settings');
+    } catch(error) {
+        console.error("Erreur d'enregistrement des paramètres du coach:", error);
+        alert("Impossible d'enregistrer les paramètres : " + error.message);
+    }
 }
 
 // Lancement Initial
