@@ -1,11 +1,15 @@
-const CACHE_NAME = 'ffme-cache-v13';
+const CACHE_NAME = 'ffme-cache-v14';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/app.js',
-  '/manifest.json'
-];
+  './',
+  'index.html',
+  'styles.css',
+  'app.js',
+  'manifest.json',
+  'icon-192.png',
+  'icon-512.png'
+].map(path => new URL(path, self.registration.scope).toString());
+const appBaseUrl = self.registration.scope;
+const appIndexUrl = new URL('index.html', appBaseUrl).toString();
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -20,7 +24,7 @@ self.addEventListener('activate', event => {
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
+          if (cacheName.startsWith('ffme-cache-') && cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
         })
@@ -40,7 +44,7 @@ self.addEventListener('fetch', event => {
         .then(() => response, () => response);
     }).catch(() => caches.match(event.request).then(response => {
       if (response) return response;
-      if (event.request.mode === 'navigate') return caches.match('/index.html');
+      if (event.request.mode === 'navigate') return caches.match(appIndexUrl);
       return Response.error();
     }))
   );
