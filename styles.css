@@ -427,6 +427,105 @@ nav button.active {
 
 .tab-content.active { display: block; }
 
+.admin-period-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.admin-period-controls label {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.admin-period-controls .form-control {
+    width: auto;
+    min-width: 130px;
+}
+
+.admin-metrics-status {
+    min-height: 1.5rem;
+    color: var(--text-muted);
+}
+
+.admin-metrics-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+}
+
+.admin-metric-card,
+.admin-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.admin-metric-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1.25rem;
+}
+
+.admin-metric-card span {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.admin-metric-card strong {
+    color: var(--primary-dark);
+    font-size: 2rem;
+    line-height: 1.1;
+}
+
+.admin-panel {
+    margin-top: 1.25rem;
+    padding: 1.25rem;
+}
+
+.admin-panel h3 {
+    margin-bottom: 1rem;
+}
+
+.admin-chart-container {
+    position: relative;
+    height: 320px;
+}
+
+.admin-table-wrap {
+    overflow-x: auto;
+}
+
+.admin-clubs-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.admin-clubs-table th,
+.admin-clubs-table td {
+    padding: 0.8rem;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.admin-clubs-table thead th {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    text-transform: uppercase;
+}
+
+.admin-data-note {
+    margin-top: 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
 .flex-between { 
     display: flex; 
     justify-content: space-between; 

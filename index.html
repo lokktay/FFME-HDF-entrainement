@@ -107,10 +107,47 @@
                 <button id="nav-athlete-club-members" class="athlete-only" onclick="switchTab('athlete-club-members')">Membres du Club</button>
                 <button id="nav-athlete-club-sessions" class="athlete-only" onclick="switchTab('athlete-club-sessions')">Séances du Club</button>
                 <button id="nav-athlete-profile" onclick="switchTab('athlete-profile')">Mon Profil</button>
+
+                <button id="nav-platform-admin" style="display:none;" onclick="switchTab('platform-admin')">Administration</button>
                 
                 <button id="btn-logout" class="btn-outline" style="margin-left: auto;" onclick="logout()">Déconnexion</button>
             </nav>
         </header>
+
+        <main id="platform-admin-space" class="tab-content">
+            <div class="flex-between">
+                <div>
+                    <h2 class="section-title">Administration de la plateforme</h2>
+                    <p class="section-description">Vue globale et agrégée de l’utilisation des clubs. Aucune séance ni donnée personnelle n’est affichée.</p>
+                </div>
+                <div class="admin-period-controls">
+                    <label for="admin-period-mode">Période</label>
+                    <select id="admin-period-mode" class="form-control" onchange="updateAdminPeriodMode()">
+                        <option value="month">Mois</option>
+                        <option value="year">Année</option>
+                    </select>
+                    <input id="admin-period-month" class="form-control" type="month" onchange="loadAdminMetrics()">
+                    <input id="admin-period-year" class="form-control" type="number" min="2020" max="2100" onchange="loadAdminMetrics()" style="display:none;">
+                    <button id="admin-refresh" class="btn-primary" type="button" onclick="loadAdminMetrics()">Actualiser</button>
+                </div>
+            </div>
+            <p id="admin-metrics-status" class="admin-metrics-status" role="status" aria-live="polite"></p>
+            <div id="admin-metrics-cards" class="admin-metrics-cards"></div>
+            <section class="admin-panel">
+                <h3 id="admin-chart-title">Évolution sur la période</h3>
+                <div class="admin-chart-container"><canvas id="admin-usage-chart"></canvas></div>
+            </section>
+            <section class="admin-panel">
+                <h3>Activité par club</h3>
+                <div class="admin-table-wrap">
+                    <table class="admin-clubs-table">
+                        <thead><tr><th>Club</th><th>Comptes actifs</th><th>Séances créées</th><th>Séances réalisées</th></tr></thead>
+                        <tbody id="admin-clubs-table-body"></tbody>
+                    </table>
+                </div>
+            </section>
+            <p class="admin-data-note">Les indicateurs historiques commencent à la mise en production du suivi. Les événements antérieurs ne sont pas reconstitués.</p>
+        </main>
 
         <!-- CHAT FLOAT BTN -->
         <button class="chat-btn-float" onclick="toggleChat()">💬</button>

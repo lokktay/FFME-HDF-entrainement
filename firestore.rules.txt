@@ -1,0 +1,598 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Fonctions de vérification rapides
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isPlatformAdmin() {
+      return isAuth() && request.auth.token.get('admin', false) == true;
+    }
+    
+    function userClubIds(userData) {
+      return 'clubIds' in userData ? userData.clubIds : [userData.get('clubId', '')];
+    }
+
+    function validSelfClubMembershipUpdate() {
+      let oldClubIds = userClubIds(resource.data).toSet();
+      let newClubIdList = userClubIds(request.resource.data);
+      let newClubIds = newClubIdList.toSet();
+      let addedClubIds = newClubIds.difference(oldClubIds);
+      let removedClubIds = oldClubIds.difference(newClubIds);
+      let activeClubId = request.resource.data.get('clubId', null);
+      return newClubIdList is list &&
+        newClubIdList.size() == newClubIds.size() &&
+        addedClubIds.size() <= 1 &&
+        removedClubIds.size() <= 1 &&
+        (addedClubIds.size() == 0 ||
+         existsAfter(/databases/$(database)/documents/clubs/$(addedClubIds.toList()[0]))) &&
+        (activeClubId == null || newClubIds.hasAny([activeClubId]));
+    }
+
+    function isMyClub(docClubId) {
+      return docClubId in userClubIds(get(/databases/$(database)/documents/users/$(request.auth.uid)).data);
+    }
+
+    function clubRole(userData, clubId) {
+      return ('clubRoles' in userData && clubId in userData.clubRoles)
+        ? userData.clubRoles[clubId]
+        : (userData.get('role', 'athlete') == 'coach' &&
+           userData.get('primaryClubId', userData.get('clubId', '')) == clubId
+          ? 'coach'
+          : 'athlete');
+    }
+
+    function activeClubId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('clubId', '');
+    }
+
+    function isClubManager(clubId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let clubData = get(/databases/$(database)/documents/clubs/$(clubId)).data;
+      return isAuth() &&
+        (clubData.get('managerIds', []).hasAny([request.auth.uid]) ||
+         (isMyClub(clubId) && clubRole(userData, clubId) == 'gerant'));
+    }
+
+    function sharesClub(userData) {
+      return userClubIds(userData).hasAny(userClubIds(get(/databases/$(database)/documents/users/$(request.auth.uid)).data));
+    }
+
+    function isLinkedParent(childUserId) {
+      let parentLink = /databases/$(database)/documents/users/$(request.auth.uid)/linkedChildren/$(childUserId);
+      let childLink = /databases/$(database)/documents/users/$(childUserId)/linkedParents/$(request.auth.uid);
+      return isAuth() &&
+        exists(parentLink) &&
+        exists(childLink) &&
+        get(parentLink).data.get('parentId', '') == request.auth.uid &&
+        get(parentLink).data.get('childId', '') == childUserId &&
+        get(parentLink).data.get('codeId', '') is string &&
+        get(childLink).data.get('parentId', '') == request.auth.uid &&
+        get(childLink).data.get('childId', '') == childUserId &&
+        get(childLink).data.get('codeId', '') == get(parentLink).data.get('codeId', '') &&
+        exists(/databases/$(database)/documents/parentLinkCodes/$(get(parentLink).data.codeId)) &&
+        get(/databases/$(database)/documents/parentLinkCodes/$(get(parentLink).data.codeId)).data.childId == childUserId &&
+        get(/databases/$(database)/documents/parentLinkCodes/$(get(parentLink).data.codeId)).data.usedBy == request.auth.uid;
+    }
+
+    function isLinkedParentInClub(childUserId, clubId) {
+      return isLinkedParent(childUserId) &&
+        clubId in userClubIds(get(/databases/$(database)/documents/users/$(childUserId)).data);
+    }
+
+    function isLinkedParentWithSharedClub(childUserId) {
+      return isLinkedParent(childUserId) &&
+        sharesClub(get(/databases/$(database)/documents/users/$(childUserId)).data);
+    }
+
+    function validAvatar(value) {
+      return value == null || (value is string && value.size() <= 200000);
+    }
+
+    function isPublicUserDocument(userData) {
+      return userData.keys().hasOnly([
+        'id', 'username', 'role', 'clubId', 'clubIds', 'primaryClubId', 'clubRoles', 'avatar'
+      ]);
+    }
+
+    function canReadPrivateProfile(userId) {
+      let ownerData = get(/databases/$(database)/documents/users/$(userId)).data;
+      return request.auth.uid == userId ||
+        (isLinkedParent(userId) && sharesClub(ownerData)) ||
+        isCoachForUser(ownerData);
+    }
+
+    function directoryMatchesUser(clubId, userId, entry) {
+      let userData = getAfter(/databases/$(database)/documents/users/$(userId)).data;
+      let clubData = getAfter(/databases/$(database)/documents/clubs/$(clubId)).data;
+      let expectedRole = clubData.get('managerIds', []).hasAny([userId])
+        ? 'gerant'
+        : clubRole(userData, clubId);
+      return entry.keys().hasOnly(['userId', 'username', 'avatar', 'role', 'clubId']) &&
+        entry.userId == userId &&
+        entry.username == userData.username &&
+        entry.avatar == userData.get('avatar', null) &&
+        validAvatar(entry.avatar) &&
+        entry.role == expectedRole &&
+        entry.clubId == clubId &&
+        clubId in userClubIds(userData);
+    }
+
+    function validPrivateProfileData(profileData) {
+      return profileData.keys().hasOnly(['email', 'dob', 'profile']) &&
+        profileData.get('email', '') is string &&
+        profileData.get('dob', '') is string &&
+        profileData.get('profile', {}) is map;
+    }
+
+    function validLegacyPrivateDataMigration(userId) {
+      let privateAfter = getAfter(/databases/$(database)/documents/users/$(userId)/private/profile).data;
+      return request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'email', 'dob', 'profile', 'parentCode', 'avatar'
+        ]) &&
+        !('email' in request.resource.data) &&
+        !('dob' in request.resource.data) &&
+        !('profile' in request.resource.data) &&
+        !('parentCode' in request.resource.data) &&
+        existsAfter(/databases/$(database)/documents/users/$(userId)/private/profile) &&
+        (!('email' in resource.data) || privateAfter.email == resource.data.email) &&
+        (!('dob' in resource.data) || privateAfter.dob == resource.data.dob) &&
+        (!('profile' in resource.data) || privateAfter.profile == resource.data.profile) &&
+        (!('profile' in resource.data) ||
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatar']) ||
+         request.resource.data.get('avatar', null) == resource.data.profile.get('avatar', null));
+    }
+
+    function isRemovingLegacyParentCode(userId) {
+      return request.auth.uid == userId &&
+        'parentCode' in resource.data &&
+        !('parentCode' in request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['parentCode']);
+    }
+
+    function validParentCodeFormat(codeId) {
+      return codeId is string &&
+        codeId.size() == 10 &&
+        codeId.matches('^[0-9A-HJKMNPQRSTVWXYZ]{10}$');
+    }
+
+    function validParentLinkCode(codeId, childUserId) {
+      return validParentCodeFormat(codeId) &&
+        exists(/databases/$(database)/documents/parentLinkCodes/$(codeId)) &&
+        get(/databases/$(database)/documents/parentLinkCodes/$(codeId)).data.childId == childUserId &&
+        !('usedBy' in get(/databases/$(database)/documents/parentLinkCodes/$(codeId)).data);
+    }
+
+    function validPrivateParentLinkCode(codeId, childUserId) {
+      return validParentCodeFormat(codeId) &&
+        existsAfter(/databases/$(database)/documents/parentLinkCodes/$(codeId)) &&
+        getAfter(/databases/$(database)/documents/parentLinkCodes/$(codeId)).data.childId == childUserId &&
+        !('usedBy' in getAfter(/databases/$(database)/documents/parentLinkCodes/$(codeId)).data);
+    }
+
+    function parentLinkCodeConsumedBy(codeId, parentUserId) {
+      return existsAfter(/databases/$(database)/documents/parentLinkCodes/$(codeId)) &&
+        getAfter(/databases/$(database)/documents/parentLinkCodes/$(codeId)).data.usedBy == parentUserId;
+    }
+    
+    function isCoach(clubId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isClubManager(clubId) ||
+        (isMyClub(clubId) && clubRole(userData, clubId) == 'coach');
+    }
+
+    function isCoachForUser(userData) {
+      return activeClubId() != '' &&
+        activeClubId() in userClubIds(userData) &&
+        isCoach(activeClubId());
+    }
+
+    function canOwnerSyncAvatar(userId) {
+      return request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avatar']) &&
+        validAvatar(request.resource.data.avatar) &&
+        existsAfter(/databases/$(database)/documents/users/$(userId)/private/profile) &&
+        getAfter(/databases/$(database)/documents/users/$(userId)/private/profile).data.profile.get('avatar', null) == request.resource.data.avatar;
+    }
+
+    function canParentSyncAvatar(userId) {
+      return isLinkedParentWithSharedClub(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avatar']) &&
+        validAvatar(request.resource.data.avatar) &&
+        existsAfter(/databases/$(database)/documents/users/$(userId)/private/profile) &&
+        getAfter(/databases/$(database)/documents/users/$(userId)/private/profile).data.profile.get('avatar', null) == request.resource.data.avatar;
+    }
+
+    function canAthleteRevokeSessionAccess() {
+      let oldAthleteIds = resource.data.get('assignedAthleteIds', []).toSet();
+      let newAthleteIds = request.resource.data.get('assignedAthleteIds', []).toSet();
+      let removedAthleteIds = oldAthleteIds.difference(newAthleteIds);
+      return isAuth() &&
+        isMyClub(resource.data.clubId) &&
+        newAthleteIds.difference(oldAthleteIds).size() == 0 &&
+        removedAthleteIds.size() == 1 &&
+        (removedAthleteIds.hasAny([request.auth.uid]) ||
+         isLinkedParentInClub(removedAthleteIds.toList()[0], resource.data.clubId)) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedAthleteIds']);
+    }
+
+    function canCoachUpdateAssignedAthletes() {
+      return isAuth() &&
+        isMyClub(resource.data.clubId) &&
+        isCoach(resource.data.clubId) &&
+        request.resource.data.clubId == resource.data.clubId &&
+        request.resource.data.authorId == resource.data.authorId &&
+        request.resource.data.get('assignedAthleteIds', []) is list &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assignedAthleteIds']);
+    }
+
+    function canBackfillAssignmentSnapshot() {
+        let session = get(/databases/$(database)/documents/sessions/$(resource.data.sessionId)).data;
+        let snapshot = request.resource.data.get('sessionSnapshot', null);
+        return isAuth() &&
+          isCoach(resource.data.clubId) &&
+          resource.data.get('sessionSnapshot', null) == null &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sessionSnapshot']) &&
+          snapshot is map &&
+          snapshot.keys().hasOnly(['id', 'name', 'clubId', 'authorId', 'isShared', 'blocks']) &&
+          snapshot.id == resource.data.sessionId &&
+          snapshot.name == session.get('name', '') &&
+          snapshot.clubId == resource.data.clubId &&
+          snapshot.authorId == session.authorId &&
+          snapshot.isShared == session.get('isShared', false) &&
+          snapshot.blocks is list;
+    }
+
+    function canRecordLoginUsageEvent() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuth() &&
+        !isPlatformAdmin() &&
+        request.resource.data.keys().hasOnly(['type', 'actorId', 'clubIds', 'occurredAt']) &&
+        request.resource.data.type == 'login' &&
+        request.resource.data.actorId == request.auth.uid &&
+        request.resource.data.clubIds is list &&
+        exists(userPath) &&
+        request.resource.data.clubIds == userClubIds(get(userPath).data) &&
+        request.resource.data.occurredAt == request.time;
+    }
+
+    function canRecordSessionCreationUsageEvent() {
+      let sessionPath = /databases/$(database)/documents/sessions/$(request.resource.data.sourceId);
+      return isAuth() &&
+        request.resource.data.keys().hasOnly(['type', 'actorId', 'clubId', 'sourceId', 'occurredAt']) &&
+        request.resource.data.type == 'session_created' &&
+        request.resource.data.actorId == request.auth.uid &&
+        request.resource.data.clubId is string &&
+        request.resource.data.sourceId is string &&
+        request.resource.data.occurredAt == request.time &&
+        !exists(sessionPath) &&
+        existsAfter(sessionPath) &&
+        getAfter(sessionPath).data.authorId == request.auth.uid &&
+        getAfter(sessionPath).data.clubId == request.resource.data.clubId &&
+        getAfter(sessionPath).data.get('createdAt', null) == request.time;
+    }
+
+    function canRecordAssignmentCompletionUsageEvent() {
+      let assignmentPath = /databases/$(database)/documents/assignments/$(request.resource.data.sourceId);
+      return isAuth() &&
+        request.resource.data.keys().hasOnly(['type', 'actorId', 'clubId', 'sourceId', 'occurredAt']) &&
+        request.resource.data.type == 'assignment_completed' &&
+        request.resource.data.actorId == request.auth.uid &&
+        request.resource.data.clubId is string &&
+        request.resource.data.sourceId is string &&
+        request.resource.data.occurredAt == request.time &&
+        exists(assignmentPath) &&
+        get(assignmentPath).data.get('isDone', false) == false &&
+        existsAfter(assignmentPath) &&
+        getAfter(assignmentPath).data.athleteId == request.auth.uid &&
+        getAfter(assignmentPath).data.clubId == request.resource.data.clubId &&
+        getAfter(assignmentPath).data.isDone == true &&
+        getAfter(assignmentPath).data.get('doneAt', null) is number;
+    }
+
+    // 2. Clubs : Lecture publique (pour le menu d'inscription)
+    match /clubs/{clubId} {
+      allow read: if true; 
+      allow create: if isAuth() &&
+        request.resource.data.get('managerIds', []).size() == 1 &&
+        request.resource.data.get('managerIds', []).hasAny([request.auth.uid]);
+      allow update: if isAuth() &&
+        ((isClubManager(clubId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerIds', 'avatar', 'categories']) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['managerIds']) ||
+           (request.resource.data.get('managerIds', []).size() > 0 &&
+            (request.resource.data.managerIds.hasAny(resource.data.get('managerIds', [])) ||
+             request.resource.data.managerIds.hasAny([request.auth.uid]))))) ||
+         (isCoach(clubId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avatar', 'categories'])));
+
+      match /members/{userId} {
+        allow get, list: if isAuth() && isMyClub(clubId);
+        allow create: if isAuth() &&
+          directoryMatchesUser(clubId, userId, request.resource.data) &&
+          (request.auth.uid == userId || isCoach(clubId));
+        allow update: if isAuth() &&
+          directoryMatchesUser(clubId, userId, request.resource.data) &&
+          (request.auth.uid == userId || isCoach(clubId) ||
+           (isLinkedParentInClub(userId, clubId) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avatar'])));
+        allow delete: if isAuth() &&
+          (request.auth.uid == userId || isClubManager(clubId));
+      }
+    }
+
+    match /parentLinkCodes/{codeId} {
+      allow get: if isAuth();
+      allow list: if false;
+      allow create: if isAuth() &&
+        validParentCodeFormat(codeId) &&
+        request.auth.uid == request.resource.data.childId &&
+        request.resource.data.keys().hasOnly(['childId', 'createdAt']) &&
+        request.resource.data.createdAt is number &&
+        existsAfter(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isAuth() &&
+        validParentCodeFormat(codeId) &&
+        request.auth.uid != resource.data.childId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy']) &&
+        !('usedBy' in resource.data) &&
+        request.resource.data.usedBy == request.auth.uid &&
+        existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/linkedChildren/$(resource.data.childId)) &&
+        existsAfter(/databases/$(database)/documents/users/$(resource.data.childId)/linkedParents/$(request.auth.uid));
+      allow delete: if isAuth() && resource.data.childId == request.auth.uid;
+    }
+
+    // 3. Public identity/membership and private profile data
+    match /users/{userId} {
+      allow create: if isAuth() && request.auth.uid == userId &&
+        request.resource.data.get('role', 'athlete') == 'athlete' &&
+        request.resource.data.keys().hasOnly([
+          'id', 'username', 'role', 'clubId', 'clubIds', 'primaryClubId', 'clubRoles', 'avatar'
+        ]) &&
+        request.resource.data.id == userId &&
+        request.resource.data.username is string &&
+        request.resource.data.username.size() > 0 &&
+        validAvatar(request.resource.data.avatar) &&
+        request.resource.data.get('clubIds', []) == [request.resource.data.clubId] &&
+        request.resource.data.get('clubRoles', {}).keys().hasOnly([request.resource.data.clubId]) &&
+        (request.resource.data.get('clubRoles', {}).get(request.resource.data.clubId, 'athlete') == 'athlete' ||
+         (request.resource.data.get('clubRoles', {}).get(request.resource.data.clubId, 'athlete') == 'gerant' &&
+          get(/databases/$(database)/documents/clubs/$(request.resource.data.clubId)).data.get('managerIds', []).hasAny([request.auth.uid])));
+      allow get, list: if isAuth() && (request.auth.uid == userId ||
+        (sharesClub(resource.data) && (isPublicUserDocument(resource.data) || isCoachForUser(resource.data))));
+      allow update: if isAuth() && (
+        (request.auth.uid == userId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clubId', 'clubIds']) &&
+          validSelfClubMembershipUpdate()) ||
+        canOwnerSyncAvatar(userId) ||
+        canParentSyncAvatar(userId) ||
+        validLegacyPrivateDataMigration(userId) ||
+        (request.auth.uid == userId &&
+          !('primaryClubId' in resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['primaryClubId']) &&
+          request.resource.data.primaryClubId == resource.data.get('clubId', '')) ||
+        (sharesClub(resource.data) && isClubManager(activeClubId()) &&
+          activeClubId() in userClubIds(resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clubRoles']) &&
+          request.resource.data.get('clubRoles', {}).diff(resource.data.get('clubRoles', {})).affectedKeys().hasOnly([activeClubId()]) &&
+          request.resource.data.get('clubRoles', {}).get(activeClubId(), 'athlete') in ['athlete', 'coach', 'gerant'])
+      );
+
+      match /private/{privateDocumentId} {
+        allow get: if isAuth() &&
+          ((privateDocumentId == 'parentLinkCode' && request.auth.uid == userId) ||
+           (privateDocumentId == 'profile' && canReadPrivateProfile(userId)));
+        allow list: if false;
+        allow create: if isAuth() && (
+          (request.auth.uid == userId &&
+           privateDocumentId == 'parentLinkCode' &&
+           request.resource.data.keys().hasOnly(['code']) &&
+           validPrivateParentLinkCode(request.resource.data.code, userId)) ||
+          (request.auth.uid == userId &&
+           privateDocumentId == 'profile' &&
+           validPrivateProfileData(request.resource.data)) ||
+          (privateDocumentId == 'profile' &&
+           isCoachForUser(get(/databases/$(database)/documents/users/$(userId)).data) &&
+           validPrivateProfileData(request.resource.data) &&
+           (get(/databases/$(database)/documents/users/$(userId)).data.get('profile', null) == request.resource.data.profile ||
+            (get(/databases/$(database)/documents/users/$(userId)).data.get('profile', null) == null &&
+             request.resource.data.profile.keys().size() == 0)) &&
+           get(/databases/$(database)/documents/users/$(userId)).data.get('email', '') == request.resource.data.get('email', '') &&
+           get(/databases/$(database)/documents/users/$(userId)).data.get('dob', '') == request.resource.data.get('dob', ''))
+        );
+        allow update: if isAuth() && (
+          (request.auth.uid == userId &&
+           privateDocumentId == 'parentLinkCode' &&
+           request.resource.data.keys().hasOnly(['code']) &&
+           validPrivateParentLinkCode(request.resource.data.code, userId)) ||
+          (request.auth.uid == userId &&
+           privateDocumentId == 'profile' &&
+           validPrivateProfileData(request.resource.data) &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['email', 'dob', 'profile'])) ||
+          (privateDocumentId == 'profile' &&
+           isCoachForUser(get(/databases/$(database)/documents/users/$(userId)).data) &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profile']) &&
+           request.resource.data.profile.diff(resource.data.profile).affectedKeys().hasOnly(['calendar'])) ||
+          (privateDocumentId == 'profile' &&
+           isLinkedParentWithSharedClub(userId) &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profile']) &&
+           request.resource.data.profile.diff(resource.data.profile).affectedKeys().hasOnly([
+             'objectives', 'avatar', 'competitions', 'skillsT1', 'skillsT2', 'calendar'
+           ]))
+        );
+        allow delete: if isAuth() && request.auth.uid == userId;
+      }
+
+      match /linkedChildren/{childUserId} {
+        allow get, list: if isAuth() && request.auth.uid == userId;
+        allow create: if isAuth() &&
+          request.auth.uid == userId &&
+          userId != childUserId &&
+          request.resource.data.keys().hasOnly(['parentId', 'childId', 'codeId', 'createdAt']) &&
+          request.resource.data.parentId == userId &&
+          request.resource.data.childId == childUserId &&
+          request.resource.data.createdAt is number &&
+          validParentLinkCode(request.resource.data.codeId, childUserId) &&
+          parentLinkCodeConsumedBy(request.resource.data.codeId, userId) &&
+          sharesClub(get(/databases/$(database)/documents/users/$(childUserId)).data);
+        allow update: if false;
+        allow delete: if isAuth() && (request.auth.uid == userId || request.auth.uid == childUserId);
+      }
+
+      match /linkedParents/{parentUserId} {
+        allow get, list: if isAuth() &&
+          (request.auth.uid == userId || request.auth.uid == parentUserId);
+        allow create: if isAuth() &&
+          request.auth.uid == parentUserId &&
+          parentUserId != userId &&
+          request.resource.data.keys().hasOnly(['parentId', 'childId', 'codeId', 'createdAt']) &&
+          request.resource.data.parentId == parentUserId &&
+          request.resource.data.childId == userId &&
+          request.resource.data.createdAt is number &&
+          validParentLinkCode(request.resource.data.codeId, userId) &&
+          parentLinkCodeConsumedBy(request.resource.data.codeId, parentUserId) &&
+          sharesClub(get(/databases/$(database)/documents/users/$(userId)).data);
+        allow update: if false;
+        allow delete: if isAuth() && (request.auth.uid == userId || request.auth.uid == parentUserId);
+      }
+    }
+
+    // 4. Blocs & Séances : Lecture pour le club, Écriture pour les coachs uniquement
+    match /blocks/{blockId} {
+      allow get: if isAuth() &&
+        isMyClub(resource.data.clubId) &&
+        isCoach(resource.data.clubId);
+      allow list: if isAuth() && isMyClub(resource.data.clubId) && isCoach(resource.data.clubId);
+      allow create: if isAuth() && isCoach(request.resource.data.clubId) &&
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && isMyClub(resource.data.clubId) &&
+        (isClubManager(resource.data.clubId) ||
+         (isCoach(resource.data.clubId) &&
+          resource.data.get('authorId', resource.data.get('userId', request.auth.uid)) == request.auth.uid &&
+          request.resource.data.clubId == resource.data.clubId &&
+          request.resource.data.authorId == resource.data.get('authorId', request.auth.uid) &&
+          request.resource.data.userId == resource.data.get('userId', request.auth.uid)));
+      allow delete: if isAuth() && isMyClub(resource.data.clubId) &&
+        (isClubManager(resource.data.clubId) ||
+         (isCoach(resource.data.clubId) &&
+          resource.data.get('authorId', resource.data.get('userId', request.auth.uid)) == request.auth.uid));
+    }
+
+    match /sessions/{sessionId} {
+      allow get: if isAuth() && isMyClub(resource.data.clubId) &&
+        (isClubManager(resource.data.clubId) ||
+         (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid) ||
+         resource.data.get('isShared', false) == true ||
+         resource.data.get('assignedAthleteIds', []).hasAny([request.auth.uid]));
+      allow list: if isAuth() && isMyClub(resource.data.clubId) &&
+        (isClubManager(resource.data.clubId) ||
+         (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid) ||
+         resource.data.get('isShared', false) == true);
+      // Only the sharing coach or a club manager can modify or remove a session.
+      allow create: if isAuth() && isCoach(request.resource.data.clubId) && request.resource.data.authorId == request.auth.uid;
+      allow update: if isAuth() && isMyClub(resource.data.clubId) &&
+        request.resource.data.clubId == resource.data.clubId &&
+        request.resource.data.authorId == resource.data.authorId &&
+        ((isClubManager(resource.data.clubId) ||
+          (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid)) ||
+         canCoachUpdateAssignedAthletes() ||
+         canAthleteRevokeSessionAccess());
+      allow delete: if isAuth() && isMyClub(resource.data.clubId) &&
+        (isClubManager(resource.data.clubId) ||
+         (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid));
+    }
+
+    // 5. Attributions : les élèves ne lisent que leurs séances et leurs bilans.
+    match /assignments/{assignmentId} {
+      allow read: if isAuth() && isMyClub(resource.data.clubId) &&
+        (isCoach(resource.data.clubId) || resource.data.athleteId == request.auth.uid ||
+         isLinkedParentInClub(resource.data.athleteId, resource.data.clubId));
+      allow create: if isAuth() && isCoach(request.resource.data.clubId) &&
+        request.resource.data.assignerId == request.auth.uid &&
+        request.resource.data.isDone == false &&
+        exists(/databases/$(database)/documents/users/$(request.resource.data.athleteId)) &&
+        request.resource.data.clubId in userClubIds(
+          get(/databases/$(database)/documents/users/$(request.resource.data.athleteId)).data
+        );
+      allow delete: if isAuth() && isMyClub(resource.data.clubId) &&
+        (isCoach(resource.data.clubId) || resource.data.athleteId == request.auth.uid ||
+         isLinkedParentInClub(resource.data.athleteId, resource.data.clubId));
+      allow update: if isAuth() && isMyClub(resource.data.clubId) &&
+        resource.data.clubId == request.resource.data.clubId &&
+        resource.data.athleteId == request.resource.data.athleteId &&
+        resource.data.sessionId == request.resource.data.sessionId &&
+        resource.data.assignerId == request.resource.data.assignerId &&
+        ((resource.data.get('sessionSnapshot', null) == request.resource.data.get('sessionSnapshot', null) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'isDone', 'doneAt', 'annotation', 'plaisir', 'difficulte', 'fatigue', 'blockRpes', 'avgRpe'
+          ]) &&
+          (isCoach(resource.data.clubId) || resource.data.athleteId == request.auth.uid ||
+           isLinkedParentInClub(resource.data.athleteId, resource.data.clubId))) ||
+         canBackfillAssignmentSnapshot());
+    }
+
+    // Platform usage metrics contain only minimal, non-feedback event metadata.
+    match /usageEvents/{eventId} {
+      allow get, list: if isPlatformAdmin();
+      allow create: if canRecordLoginUsageEvent() ||
+        canRecordSessionCreationUsageEvent() ||
+        canRecordAssignmentCompletionUsageEvent();
+      allow update, delete: if false;
+    }
+
+    // 6. Messages & Notifications
+    match /messages/{messageId} {
+      allow read: if isAuth() && isMyClub(resource.data.clubId) &&
+        (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow create: if isAuth() &&
+        request.resource.data.keys().hasOnly(['clubId', 'senderId', 'receiverId', 'text', 'date']) &&
+        request.resource.data.senderId == request.auth.uid &&
+        request.resource.data.receiverId != request.auth.uid &&
+        request.resource.data.clubId == activeClubId() &&
+        isMyClub(request.resource.data.clubId) &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 10000 &&
+        exists(/databases/$(database)/documents/users/$(request.resource.data.receiverId)) &&
+        request.resource.data.clubId in userClubIds(
+          get(/databases/$(database)/documents/users/$(request.resource.data.receiverId)).data
+        );
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isAuth() && isMyClub(resource.data.clubId);
+      allow create: if isAuth() &&
+        request.resource.data.keys().hasOnly(['id', 'clubId', 'createdBy', 'text', 'date', 'timestamp']) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.clubId == activeClubId() &&
+        isMyClub(request.resource.data.clubId) &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() <= 2000;
+    }
+
+    match /roleRequests/{requestId} {
+      allow read: if isAuth() &&
+        (resource.data.requesterId == request.auth.uid || isClubManager(resource.data.clubId));
+      allow create: if isAuth() &&
+        request.resource.data.keys().hasOnly([
+          'clubId', 'requesterId', 'requesterName', 'requestedRole', 'status', 'createdAt'
+        ]) &&
+        request.resource.data.requesterId == request.auth.uid &&
+        isMyClub(request.resource.data.clubId) &&
+        request.resource.data.requestedRole in ['coach', 'gerant'] &&
+        request.resource.data.status == 'pending';
+      allow update: if isAuth() && isClubManager(resource.data.clubId) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.clubId == resource.data.clubId &&
+        request.resource.data.requesterId == resource.data.requesterId &&
+        request.resource.data.requesterName == resource.data.requesterName &&
+        request.resource.data.requestedRole == resource.data.requestedRole &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt', 'resolvedBy']) &&
+        request.resource.data.status in ['approved', 'rejected'] &&
+        request.resource.data.resolvedBy == request.auth.uid;
+    }
+  }
+}

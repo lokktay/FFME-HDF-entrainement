@@ -28,6 +28,8 @@ let clubRoleRequests = [];
 let currentUser = null; 
 let originalParentUser = null; 
 let chartInstances = {}; 
+let adminUsageChart = null;
+let adminMetricsGeneration = 0;
 
 let currentMonth = new Date().getMonth(); let currentYear = new Date().getFullYear();
 let selectedDateForNote = null; let selectedUserIdForCalendar = null;
@@ -133,6 +135,32 @@ function getUserClubIds(user = currentUser) {
     const clubIds = Array.isArray(user.clubIds) ? [...user.clubIds] : [];
     if(user.clubId && !clubIds.includes(user.clubId)) clubIds.unshift(user.clubId);
     return [...new Set(clubIds)];
+}
+
+async function recordLoginUsageEvent() {
+    if(!currentUser || isPlatformAdmin()) return;
+    try {
+        await db.collection('usageEvents').add({
+            type: 'login',
+            actorId: currentUser.id,
+            clubIds: Array.isArray(currentUser.clubIds)
+                ? [...new Set(currentUser.clubIds)]
+                : (currentUser.clubId ? [currentUser.clubId] : []),
+            occurredAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    } catch(error) {
+        console.error("Échec de l'enregistrement de l'activité de connexion pour les statistiques de la plateforme:", error);
+    }
+}
+
+function addSessionCreationUsageEvent(batch, session) {
+    batch.set(db.collection('usageEvents').doc(), {
+        type: 'session_created',
+        actorId: currentUser.id,
+        clubId: session.clubId,
+        sourceId: session.id,
+        occurredAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 }
 
 function getPrivateProfileRef(userId) {
@@ -457,6 +485,10 @@ function getClubRole(user = currentUser, clubId = currentUser && currentUser.clu
 function hasCoachRights(user = currentUser, clubId = currentUser && currentUser.clubId) {
     const role = getClubRole(user, clubId);
     return role === 'coach' || role === 'gerant';
+}
+
+function isPlatformAdmin(user = currentUser) {
+    return Boolean(user && user.isPlatformAdmin);
 }
 
 function isClubManager(user = currentUser, clubId = currentUser && currentUser.clubId) {
@@ -791,6 +823,24 @@ async function startAuthenticatedSession(user) {
             return;
         }
 
+        const tokenResult = await user.getIdTokenResult(true);
+        if(tokenResult.claims.admin === true) {
+            stopRealtimeListeners();
+            currentUser = {
+                id: user.uid,
+                username: 'Administration',
+                role: 'admin',
+                isPlatformAdmin: true
+            };
+            originalParentUser = null;
+            linkedChildIds = [];
+            linkedParentIds = [];
+            currentUserParentCode = null;
+            document.getElementById('loader-screen').style.display = 'none';
+            showApp();
+            return;
+        }
+
         const userSnapshot = await db.collection('users').doc(user.uid).get();
         if(!userSnapshot.exists) {
             document.getElementById('loader-screen').style.display = 'none';
@@ -802,6 +852,7 @@ async function startAuthenticatedSession(user) {
 
         currentUser = await migrateLegacyPrivateData({ ...userSnapshot.data(), id: userSnapshot.id });
         await syncClubDirectory(currentUser);
+        await recordLoginUsageEvent();
         currentUserParentCode = null;
         originalParentUser = null;
         let parentLinkRulesAvailable = true;
@@ -982,8 +1033,8 @@ async function syncAssignedSessionAccess(assignments, clubId, generation) {
             return { key: `${clubId}:${sessionId}`, ref: session.ref, missingIds, data: session.data };
         }).filter(Boolean);
 
-        const writes = [];
         for(const update of updates) {
+            const writes = [];
             if(update.missingIds.length) {
                 writes.push({ ref: update.ref, data: {
                     assignedAthleteIds: firebase.firestore.FieldValue.arrayUnion(...update.missingIds)
@@ -1000,12 +1051,12 @@ async function syncAssignedSessionAccess(assignments, clubId, generation) {
                     });
                 });
             }
-        }
 
-        for(let index = 0; index < writes.length; index += 450) {
-            const batch = db.batch();
-            writes.slice(index, index + 450).forEach(write => batch.update(write.ref, write.data));
-            await batch.commit();
+            for(let index = 0; index < writes.length; index += 450) {
+                const batch = db.batch();
+                writes.slice(index, index + 450).forEach(write => batch.update(write.ref, write.data));
+                await batch.commit();
+            }
         }
     } catch(error) {
         if(error.code === 'permission-denied') {
@@ -1211,6 +1262,7 @@ function startRealtimeListeners(clubId) {
 }
 
 function refreshCurrentTab() {
+    if(document.getElementById('platform-admin-space').classList.contains('active')) return;
     if(document.getElementById('coach-dashboard-space').classList.contains('active')) renderCoachDashboard();
     if(document.getElementById('coach-athletes-space').classList.contains('active')) renderCoachAthletes();
     if(document.getElementById('athlete-sessions-space').classList.contains('active')) renderAthleteSessions();
@@ -1221,6 +1273,184 @@ function refreshCurrentTab() {
     if(athleteProfileModal && athleteProfileModal.style.display === 'flex' &&
        document.getElementById('coach-ath-view-historique').style.display !== 'none') {
         renderCoachAthleteHistory();
+    }
+}
+
+function updateAdminPeriodMode() {
+    if(!isPlatformAdmin()) return;
+    const mode = document.getElementById('admin-period-mode').value;
+    document.getElementById('admin-period-month').style.display = mode === 'month' ? '' : 'none';
+    document.getElementById('admin-period-year').style.display = mode === 'year' ? '' : 'none';
+    loadAdminMetrics();
+}
+
+function getAdminPeriodRange() {
+    const mode = document.getElementById('admin-period-mode').value;
+    if(mode === 'year') {
+        const year = Number(document.getElementById('admin-period-year').value);
+        if(!Number.isInteger(year) || year < 2020 || year > 2100) {
+            throw new Error("Sélectionnez une année valide.");
+        }
+        return {
+            mode,
+            year,
+            start: new Date(Date.UTC(year, 0, 1)),
+            end: new Date(Date.UTC(year + 1, 0, 1))
+        };
+    }
+
+    const value = document.getElementById('admin-period-month').value;
+    const match = /^(\d{4})-(\d{2})$/.exec(value);
+    if(!match) throw new Error("Sélectionnez un mois valide.");
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    return {
+        mode: 'month',
+        year,
+        month,
+        start: new Date(Date.UTC(year, month, 1)),
+        end: new Date(Date.UTC(year, month + 1, 1))
+    };
+}
+
+async function getAdminUsageEvents(start, end) {
+    const startTimestamp = firebase.firestore.Timestamp.fromDate(start);
+    const endTimestamp = firebase.firestore.Timestamp.fromDate(end);
+    const events = [];
+    let query = db.collection('usageEvents')
+        .where('occurredAt', '>=', startTimestamp)
+        .where('occurredAt', '<', endTimestamp)
+        .orderBy('occurredAt')
+        .limit(1000);
+    while(true) {
+        const snapshot = await query.get();
+        events.push(...snapshot.docs.map(doc => doc.data()));
+        if(snapshot.docs.length < 1000) break;
+        query = query.startAfter(snapshot.docs[snapshot.docs.length - 1]);
+    }
+    return events;
+}
+
+function renderAdminMetrics(period, events, recentEvents) {
+    const clubsById = new Map(allClubs.map(club => [club.id, {
+        name: club.name || 'Club sans nom',
+        activeAccounts: new Set(),
+        sessionsCreated: 0,
+        sessionsCompleted: 0
+    }]));
+    const activeAccounts = new Set();
+    const recentActiveAccounts = new Set();
+    const trends = new Map();
+    const bucketCount = period.mode === 'year' ? 12 : new Date(Date.UTC(period.year, period.month + 1, 0)).getUTCDate();
+    const bucketLabels = period.mode === 'year'
+        ? Array.from({ length: 12 }, (_, index) => new Date(Date.UTC(period.year, index, 1))
+            .toLocaleDateString('fr-FR', { month: 'short', timeZone: 'UTC' }))
+        : Array.from({ length: bucketCount }, (_, index) => String(index + 1));
+    for(let index = 0; index < bucketCount; index++) {
+        trends.set(index, { activeAccounts: new Set(), sessionsCreated: 0, sessionsCompleted: 0 });
+    }
+
+    const getEventBucket = event => {
+        if(!event.occurredAt || typeof event.occurredAt.toDate !== 'function') return null;
+        const date = event.occurredAt.toDate();
+        return period.mode === 'year' ? date.getUTCMonth() : date.getUTCDate() - 1;
+    };
+    events.forEach(event => {
+        const bucket = getEventBucket(event);
+        const trend = trends.get(bucket);
+        if(event.type === 'login' && event.actorId) {
+            activeAccounts.add(event.actorId);
+            if(trend) trend.activeAccounts.add(event.actorId);
+            (event.clubIds || []).forEach(clubId => {
+                if(clubsById.has(clubId)) clubsById.get(clubId).activeAccounts.add(event.actorId);
+            });
+        } else if(event.type === 'session_created') {
+            if(clubsById.has(event.clubId)) clubsById.get(event.clubId).sessionsCreated++;
+            if(trend) trend.sessionsCreated++;
+        } else if(event.type === 'assignment_completed') {
+            if(clubsById.has(event.clubId)) clubsById.get(event.clubId).sessionsCompleted++;
+            if(trend) trend.sessionsCompleted++;
+        }
+    });
+    recentEvents.forEach(event => {
+        if(event.type === 'login' && event.actorId) recentActiveAccounts.add(event.actorId);
+    });
+
+    document.getElementById('admin-metrics-cards').innerHTML = `
+        <article class="admin-metric-card"><span>Comptes actifs sur la période</span><strong>${activeAccounts.size}</strong></article>
+        <article class="admin-metric-card"><span>Séances créées sur la période</span><strong>${events.filter(event => event.type === 'session_created').length}</strong></article>
+        <article class="admin-metric-card"><span>Séances réalisées sur la période</span><strong>${events.filter(event => event.type === 'assignment_completed').length}</strong></article>
+        <article class="admin-metric-card"><span>Comptes actifs sur 14 jours</span><strong>${recentActiveAccounts.size}</strong></article>
+    `;
+
+    const rows = [...clubsById.entries()].sort((first, second) =>
+        first[1].name.localeCompare(second[1].name, 'fr')
+    );
+    document.getElementById('admin-clubs-table-body').innerHTML = rows.map(([clubId, metrics]) => `
+        <tr>
+            <th scope="row">${escapeHtml(metrics.name)}</th>
+            <td>${metrics.activeAccounts.size}</td>
+            <td>${metrics.sessionsCreated}</td>
+            <td>${metrics.sessionsCompleted}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="4">Aucun club disponible.</td></tr>';
+
+    document.getElementById('admin-chart-title').textContent = period.mode === 'year'
+        ? `Évolution mensuelle — ${period.year}`
+        : `Évolution quotidienne — ${period.year}-${String(period.month + 1).padStart(2, '0')}`;
+    if(adminUsageChart) adminUsageChart.destroy();
+    const canvas = document.getElementById('admin-usage-chart');
+    if(typeof Chart === 'undefined') {
+        return;
+    }
+    adminUsageChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels: bucketLabels,
+            datasets: [
+                { label: 'Comptes actifs', data: [...trends.values()].map(item => item.activeAccounts.size), borderColor: '#0055A4', backgroundColor: 'rgba(0, 85, 164, 0.1)', tension: 0.25 },
+                { label: 'Séances créées', data: [...trends.values()].map(item => item.sessionsCreated), borderColor: '#0284C7', backgroundColor: 'rgba(2, 132, 199, 0.1)', tension: 0.25 },
+                { label: 'Séances réalisées', data: [...trends.values()].map(item => item.sessionsCompleted), borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.25 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+}
+
+async function loadAdminMetrics() {
+    if(!isPlatformAdmin()) return;
+    const generation = ++adminMetricsGeneration;
+    const status = document.getElementById('admin-metrics-status');
+    const refreshButton = document.getElementById('admin-refresh');
+    status.textContent = "Chargement des statistiques…";
+    refreshButton.disabled = true;
+    try {
+        const period = getAdminPeriodRange();
+        const recentStart = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+        const recentEnd = new Date();
+        const [clubsSnapshot, events] = await Promise.all([
+            db.collection('clubs').get(),
+            getAdminUsageEvents(period.start, period.end)
+        ]);
+        const recentEvents = period.start <= recentStart && period.end >= recentEnd
+            ? events.filter(event => event.occurredAt.toDate() >= recentStart)
+            : await getAdminUsageEvents(recentStart, recentEnd);
+        if(generation !== adminMetricsGeneration || !isPlatformAdmin()) return;
+        allClubs = clubsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+        renderAdminMetrics(period, events, recentEvents);
+        status.textContent = `${events.length} événements agrégés chargés. Historique suivi à partir du déploiement.` +
+            (typeof Chart === 'undefined' ? " Le graphique est indisponible (bibliothèque non chargée)." : '');
+    } catch(error) {
+        if(generation !== adminMetricsGeneration) return;
+        console.error("Erreur de chargement des statistiques administrateur:", error);
+        status.textContent = `Impossible de charger les statistiques : ${error.message}`;
+    } finally {
+        if(generation === adminMetricsGeneration) refreshButton.disabled = false;
     }
 }
 
@@ -1477,7 +1707,27 @@ async function linkChildAccount() {
 function showApp() {
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-content').style.display = 'block';
-    
+    const adminNav = document.getElementById('nav-platform-admin');
+    const chatButton = document.querySelector('.chat-btn-float');
+    if(isPlatformAdmin()) {
+        document.getElementById('header-user-info-text').innerHTML = '🔐 Administration';
+        document.querySelectorAll('#main-nav button:not(#btn-logout)').forEach(button => button.style.display = 'none');
+        adminNav.style.display = 'inline-block';
+        if(chatButton) chatButton.style.display = 'none';
+        const now = new Date();
+        document.getElementById('admin-period-month').value =
+            `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        document.getElementById('admin-period-year').value = String(now.getFullYear());
+        document.getElementById('admin-period-mode').value = 'month';
+        document.getElementById('admin-period-month').style.display = '';
+        document.getElementById('admin-period-year').style.display = 'none';
+        switchTab('platform-admin');
+        return;
+    }
+
+    adminNav.style.display = 'none';
+    if(chatButton) chatButton.style.display = '';
+    document.querySelectorAll('#main-nav button:not(#btn-logout)').forEach(button => button.style.display = '');
     const activeRole = getClubRole();
     let userText = `👤 ${escapeHtml(currentUser.username)} <span style="opacity:0.7; font-size:0.8rem; margin-left:4px;">(${getRoleLabel(activeRole)})</span>`;
     if(originalParentUser) userText += ` <span style="font-size:0.75rem; background:var(--primary); color:white; padding:2px 6px; border-radius:4px; margin-left:8px; font-weight:700;">Vue Enfant</span>`;
@@ -1500,10 +1750,18 @@ function showApp() {
     if(btnLink) btnLink.style.display = age >= 18 && !originalParentUser ? 'inline-block' : 'none';
 }
 function switchTab(tab) {
+    if(tab === 'platform-admin' && !isPlatformAdmin()) return;
+    if(isPlatformAdmin() && tab !== 'platform-admin') return;
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
-    document.getElementById(tab + '-space').classList.add('active');
+    const target = document.getElementById(tab + '-space');
+    if(!target) return;
+    target.classList.add('active');
     const navBtn = document.getElementById('nav-' + tab); if(navBtn) navBtn.classList.add('active');
+    if(tab === 'platform-admin') {
+        loadAdminMetrics();
+        return;
+    }
     refreshCurrentTab();
 }
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
@@ -1797,7 +2055,11 @@ async function saveSession() {
             sessionData.id = 'sess_' + Date.now();
             sessionData.authorId = currentUser.id;
             sessionData.isShared = false;
-            await db.collection('sessions').doc(sessionData.id).set(sessionData);
+            sessionData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            const batch = db.batch();
+            batch.set(db.collection('sessions').doc(sessionData.id), sessionData);
+            addSessionCreationUsageEvent(batch, sessionData);
+            await batch.commit();
         }
         closeModal('modal-create-session');
         setSessionLibraryTab('personal');
@@ -1900,9 +2162,20 @@ async function getClubSessionBlockSnapshots(session) {
 async function duplicateSession(id) {
     const s = clubSessions.find(x => x.id === id);
     if(!s) return alert("Cette séance n'est plus disponible.");
-    const newSession = { id: 'sess_' + Date.now(), name: s.name + " (Copie)", blocks: [...(s.blocks || [])], clubId: currentUser.clubId, authorId: currentUser.id, isShared: false };
+    const newSession = {
+        id: 'sess_' + Date.now(),
+        name: s.name + " (Copie)",
+        blocks: [...(s.blocks || [])],
+        clubId: currentUser.clubId,
+        authorId: currentUser.id,
+        isShared: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
     try {
-        await db.collection('sessions').doc(newSession.id).set(newSession);
+        const batch = db.batch();
+        batch.set(db.collection('sessions').doc(newSession.id), newSession);
+        addSessionCreationUsageEvent(batch, newSession);
+        await batch.commit();
         setSessionLibraryTab('personal');
     } catch(error) {
         console.error("Erreur de duplication de la séance:", error);
@@ -2014,9 +2287,13 @@ async function publishToClub(id) {
             blockSnapshots,
             clubId: currentUser.clubId,
             authorId: currentUser.id,
-            isShared: true
+            isShared: true,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
-        await db.collection('sessions').doc(sharedSession.id).set(sharedSession);
+        const batch = db.batch();
+        batch.set(db.collection('sessions').doc(sharedSession.id), sharedSession);
+        addSessionCreationUsageEvent(batch, sharedSession);
+        await batch.commit();
         setSessionLibraryTab('club');
     } catch(error) {
         console.error("Erreur de partage de la séance:", error);
@@ -2899,7 +3176,8 @@ document.getElementById('btn-validate-session').onclick = async function() {
     const avgRpe = rpeCount > 0 ? (rpeSum / rpeCount) : difficulte;
 
     try {
-        await db.collection('assignments').doc(a.id).update({
+        const batch = db.batch();
+        batch.update(db.collection('assignments').doc(a.id), {
             isDone: true,
             doneAt: Date.now(),
             annotation: annotation,
@@ -2909,6 +3187,16 @@ document.getElementById('btn-validate-session').onclick = async function() {
             blockRpes: blockRpes,
             avgRpe: avgRpe
         });
+        if(!a.isDone) {
+            batch.set(db.collection('usageEvents').doc(), {
+                type: 'assignment_completed',
+                actorId: currentUser.id,
+                clubId: a.clubId,
+                sourceId: a.id,
+                occurredAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        await batch.commit();
 
         closeModal('modal-view-session');
         refreshCurrentTab();
