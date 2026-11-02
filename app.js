@@ -1150,11 +1150,14 @@ function startRealtimeListeners(clubId) {
                         }
                     });
                     const privateData = await loadPrivateProfile(member.id);
+                    const storedProfileAvatar = privateData && privateData.profile && privateData.profile.avatar ||
+                        legacyPrivateData.profile && legacyPrivateData.profile.avatar;
                     if(privateData && privateData.profile) member.profile = privateData.profile;
                     else if(!member.profile) member.profile = getEmptyProfile();
                     member.email = privateData ? privateData.email : member.email;
                     member.dob = privateData ? privateData.dob : member.dob;
                     await backfillClubDirectory(clubId, member, privateData ? null : legacyPrivateData);
+                    if(!member.avatar && storedProfileAvatar) member.avatar = storedProfileAvatar;
                     return member;
                 }));
                 if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;

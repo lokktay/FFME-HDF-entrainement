@@ -434,6 +434,11 @@ nav button.active {
     flex-wrap: wrap;
 }
 
+#platform-admin-space .section-description {
+    margin: 0.55rem 0 0;
+    line-height: 1.45;
+}
+
 .admin-period-controls label {
     font-weight: 700;
     color: var(--text-dark);
