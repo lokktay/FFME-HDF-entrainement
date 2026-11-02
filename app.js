@@ -2118,14 +2118,23 @@ async function saveSession() {
     }
 }
 
+function createUnavailableBlockSnapshot(blockId, index) {
+    return {
+        id: blockId || `block-${index}`,
+        category: 'Indisponible',
+        title: 'Exercice indisponible',
+        description: "Cet exercice a été supprimé ou n'est plus disponible dans le club."
+    };
+}
+
 async function createAssignedSessionSnapshot(session) {
-    const blocks = await Promise.all((session.blocks || []).map(async blockId => {
+    const blocks = await Promise.all((session.blocks || []).map(async (blockId, index) => {
         let block = clubBlocks.find(item => item.id === blockId);
         if(!block) {
             const blockSnap = await db.collection('blocks').doc(blockId).get();
             if(blockSnap.exists) block = { id: blockSnap.id, ...blockSnap.data() };
         }
-        if(!block) throw new Error(`L'exercice ${blockId} n'est plus disponible.`);
+        if(!block) return createUnavailableBlockSnapshot(blockId, index);
         return {
             id: block.id,
             category: block.category || '',
@@ -2192,7 +2201,7 @@ async function getClubSessionBlockSnapshots(session) {
             const blockSnap = await db.collection('blocks').doc(blockId).get();
             if(blockSnap.exists) block = { id: blockSnap.id, ...blockSnap.data() };
         }
-        if(!block) throw new Error(`L'exercice ${blockId || index + 1} n'est plus disponible.`);
+        if(!block) return createUnavailableBlockSnapshot(blockId, index);
         return {
             id: block.id || blockId || `block-${index}`,
             category: block.category || '',
