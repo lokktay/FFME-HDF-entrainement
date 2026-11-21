@@ -236,7 +236,7 @@ async function buildVapidAuthorization(endpoint, env) {
     const claims = bytesToBase64Url(encoder.encode(JSON.stringify({
         aud: new URL(endpoint).origin,
         exp: Math.floor(Date.now() / 1000) + 12 * 3600,
-        sub: env.VAPID_SUBJECT
+        sub: normalizeVapidSubject(env.VAPID_SUBJECT)
     })));
     const unsigned = `${header}.${claims}`;
     const privateJwk = JSON.parse(env.VAPID_PRIVATE_JWK);
@@ -244,6 +244,14 @@ async function buildVapidAuthorization(endpoint, env) {
     const key = await crypto.subtle.importKey('jwk', privateJwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
     const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, encoder.encode(unsigned)));
     return `vapid t=${unsigned}.${bytesToBase64Url(signature)}, k=${env.VAPID_PUBLIC_KEY}`;
+}
+
+// Apple et Google exigent « mailto:adresse » ou une adresse https : on complète si besoin.
+function normalizeVapidSubject(value) {
+    const subject = String(value || '').trim();
+    if(/^(mailto:|https:\/\/)/i.test(subject)) return subject;
+    if(subject.includes('@')) return `mailto:${subject}`;
+    return subject;
 }
 
 // ---------------------------------------------------------------------------

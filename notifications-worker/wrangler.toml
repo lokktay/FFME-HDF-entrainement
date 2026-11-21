@@ -7,3 +7,10 @@ compatibility_date = "2025-01-01"
 # Conserve les variables saisies dans le tableau de bord (FIREBASE_PROJECT_ID, ALLOWED_ORIGINS…)
 # au lieu de les effacer à chaque déploiement. Les secrets (VAPID_PRIVATE_JWK) sont toujours conservés.
 keep_vars = true
+
+# Réglages non sensibles (le dépôt est public).
+# VAPID_SUBJECT (adresse mail) et VAPID_PRIVATE_JWK (clé privée) restent UNIQUEMENT dans Cloudflare.
+[vars]
+ALLOWED_ORIGINS = "https://lokktay.github.io,http://127.0.0.1:3000"
+FIREBASE_PROJECT_ID = "ffme-plateforme-entrainement"
+VAPID_PUBLIC_KEY = "BGqDTg1tHGMWQruHyu2-a5ja98SZdLOsbnx4HivLZ_ls4ismuFCKUJtPL1P1IW68RO-cfmqevGwkHQsigFGXBtI"

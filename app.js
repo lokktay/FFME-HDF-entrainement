@@ -15,8 +15,8 @@ const auth = firebase.auth();
 // À remplir après la mise en ligne du Worker (voir notifications-worker/README.md).
 // Tant que ces deux valeurs sont vides, les notifications sont simplement désactivées.
 const PUSH_CONFIG = {
-    workerUrl: '',        // ex. 'https://ffme-hdf-entrainement.votre-compte.workers.dev'
-    vapidPublicKey: ''    // clé publique VAPID (format base64url)
+    workerUrl: 'https://ffme-hdf-entrainement.pierre-kadri59.workers.dev',
+    vapidPublicKey: 'BGqDTg1tHGMWQruHyu2-a5ja98SZdLOsbnx4HivLZ_ls4ismuFCKUJtPL1P1IW68RO-cfmqevGwkHQsigFGXBtI' // clé publique VAPID (non secrète)
 };
 
 const defaultCategories = ['Échauffement', 'Physique', 'Volume', 'Rési', 'Force', 'Lecture', 'Mental', 'Débrief'];
