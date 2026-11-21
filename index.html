@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>FFME - Entraînement Escalade</title>
     
     <!-- Bibliothèques externes -->
@@ -98,19 +98,19 @@
             </div>
             <nav id="main-nav">
                 <!-- Coach Only Tabs -->
-                <button id="nav-coach-dashboard" class="coach-only" onclick="switchTab('coach-dashboard')">Séances & Blocs</button>
-                <button id="nav-coach-athletes" class="coach-only" onclick="switchTab('coach-athletes')">Membres du Club</button>
-                <button id="nav-coach-settings" class="coach-only" onclick="openCoachSettingsModal()">Paramètres</button>
-                
-                <!-- Athlete Tabs -->
-                <button id="nav-athlete-sessions" onclick="switchTab('athlete-sessions')">Mes Séances</button>
-                <button id="nav-athlete-club-members" class="athlete-only" onclick="switchTab('athlete-club-members')">Membres du Club</button>
-                <button id="nav-athlete-club-sessions" class="athlete-only" onclick="switchTab('athlete-club-sessions')">Séances du Club</button>
-                <button id="nav-athlete-profile" onclick="switchTab('athlete-profile')">Mon Profil</button>
+                <button id="nav-coach-dashboard" class="coach-only" onclick="switchTab('coach-dashboard')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9 11h6M9 15h4"/></svg></span><span class="nav-label">Séances & Blocs</span><span class="nav-label-short" aria-hidden="true">Séances</span></button>
+                <button id="nav-coach-athletes" class="coach-only" onclick="switchTab('coach-athletes')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4c2.1.7 3.5 2.8 3.5 5.6"/></svg></span><span class="nav-label">Membres du Club</span><span class="nav-label-short" aria-hidden="true">Membres</span></button>
+                <button id="nav-coach-settings" class="coach-only" onclick="openCoachSettingsModal()"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></span><span class="nav-label">Paramètres</span><span class="nav-label-short" aria-hidden="true">Réglages</span></button>
 
-                <button id="nav-platform-admin" style="display:none;" onclick="switchTab('platform-admin')">Administration</button>
-                
-                <button id="btn-logout" class="btn-outline" style="margin-left: auto;" onclick="logout()">Déconnexion</button>
+                <!-- Athlete Tabs -->
+                <button id="nav-athlete-sessions" onclick="switchTab('athlete-sessions')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M9 15l2 2 4-4"/></svg></span><span class="nav-label">Mes Séances</span><span class="nav-label-short" aria-hidden="true">À faire</span></button>
+                <button id="nav-athlete-club-members" class="athlete-only" onclick="switchTab('athlete-club-members')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4c2.1.7 3.5 2.8 3.5 5.6"/></svg></span><span class="nav-label">Membres du Club</span><span class="nav-label-short" aria-hidden="true">Membres</span></button>
+                <button id="nav-athlete-club-sessions" class="athlete-only" onclick="switchTab('athlete-club-sessions')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H19v14H5.5A1.5 1.5 0 0 0 4 19.5z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H19M8 8h7"/></svg></span><span class="nav-label">Séances du Club</span><span class="nav-label-short" aria-hidden="true">Club</span></button>
+                <button id="nav-athlete-profile" onclick="switchTab('athlete-profile')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></span><span class="nav-label">Mon Profil</span><span class="nav-label-short" aria-hidden="true">Profil</span></button>
+
+                <button id="nav-platform-admin" style="display:none;" onclick="switchTab('platform-admin')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg></span><span class="nav-label">Administration</span><span class="nav-label-short" aria-hidden="true">Admin</span></button>
+
+                <button id="btn-logout" class="btn-outline" style="margin-left: auto;" onclick="logout()" aria-label="Déconnexion" title="Déconnexion"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7a8 8 0 1 0 11.4 0"/></svg></span><span class="nav-label">Déconnexion</span></button>
             </nav>
         </header>
 
@@ -213,6 +213,7 @@
                 <div class="internal-tabs" id="coach-session-tabs">
                     <button class="active" id="tab-btn-perso" onclick="setSessionLibraryTab('personal')">Mes Séances (Privées)</button>
                     <button id="tab-btn-club" onclick="setSessionLibraryTab('club')">Bibliothèque du Club</button>
+                    <button id="tab-btn-global" onclick="setSessionLibraryTab('global')">Bibliothèque</button>
                 </div>
                 <input type="text" id="search-sessions" class="search-bar" placeholder="Rechercher une séance..." onkeyup="updateCoachSessionSearch(this.value)">
             </div>
@@ -300,38 +301,10 @@
                     <textarea id="profile-objectives" class="form-control" style="min-height: 60px; margin-bottom: 0.75rem;"></textarea>
                     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                         <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="saveProfileObjectives()">Enregistrer</button>
-                        <button id="profile-admin-entry" class="btn-outline" style="display:none; padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="switchTab('platform-admin')">Administration</button>
                         <button class="btn-outline" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="openLinkChildModal()" id="btn-link-child" style="display:none;">+ Lier un enfant</button>
                     </div>
                     <div id="profile-linked-children-list" style="margin-top: 1rem; font-size:0.85rem; display:flex; gap:0.5rem; flex-wrap:wrap;"></div>
                 </div>
-            </div>
-
-            <div class="profile-section">
-            <h3>Mes clubs</h3>
-            <div id="profile-clubs-list"></div>
-            <div class="club-management-panel">
-                <div class="club-management-heading">
-                    <span class="club-panel-icon" aria-hidden="true">＋</span>
-                    <div>
-                        <strong>Gérer mes clubs</strong>
-                        <p>Rejoignez un club existant ou créez le vôtre.</p>
-                    </div>
-                </div>
-                <div class="club-management-controls">
-                    <label class="club-select-wrap">
-                        <span class="sr-only">Choisir un club à rejoindre ou en créer un</span>
-                        <select id="available-clubs-select" class="form-control club-select" onchange="handleAvailableClubChange()"></select>
-                    </label>
-                    <button id="join-club-submit" class="btn-primary" onclick="joinClub()">Rejoindre le club</button>
-                </div>
-                <div id="create-club-controls" class="club-management-controls club-create-controls" style="display:none;">
-                    <label class="sr-only" for="new-club-name">Nom du nouveau club</label>
-                    <input id="new-club-name" class="form-control" type="text" maxlength="80" placeholder="Nom du nouveau club">
-                    <button id="create-club-submit" class="btn-primary" onclick="createClub()">Créer le club</button>
-                </div>
-                <p class="club-create-hint">En créant ce club, vous en deviendrez automatiquement le gérant.</p>
-            </div>
             </div>
 
             <div id="role-request-section" class="profile-section">
@@ -370,6 +343,45 @@
                 </div>
                 <div id="athlete-competitions-list"></div>
             </div>
+
+            <div class="profile-section">
+            <h3>Mes clubs</h3>
+            <div id="profile-clubs-list"></div>
+            <div class="club-management-panel">
+                <div class="club-management-heading">
+                    <span class="club-panel-icon" aria-hidden="true">＋</span>
+                    <div>
+                        <strong>Gérer mes clubs</strong>
+                        <p>Rejoignez un club existant ou créez le vôtre.</p>
+                    </div>
+                </div>
+                <div class="club-management-controls">
+                    <label class="club-select-wrap">
+                        <span class="sr-only">Choisir un club à rejoindre ou en créer un</span>
+                        <select id="available-clubs-select" class="form-control club-select" onchange="handleAvailableClubChange()"></select>
+                    </label>
+                    <button id="join-club-submit" class="btn-primary" onclick="joinClub()">Rejoindre le club</button>
+                </div>
+                <div id="create-club-controls" class="club-management-controls club-create-controls" style="display:none;">
+                    <label class="sr-only" for="new-club-name">Nom du nouveau club</label>
+                    <input id="new-club-name" class="form-control" type="text" maxlength="80" placeholder="Nom du nouveau club">
+                    <button id="create-club-submit" class="btn-primary" onclick="createClub()">Créer le club</button>
+                </div>
+                <p class="club-create-hint">En créant ce club, vous en deviendrez automatiquement le gérant.</p>
+            </div>
+            </div>
+
+            <!-- Notifications push de cet appareil (visible seulement quand le Worker est configuré) -->
+            <div id="push-entry" class="install-app-entry push-entry" style="display:none;">
+                <button id="push-toggle" type="button" class="btn-outline">Activer les notifications</button>
+                <p id="push-status" class="install-app-help"></p>
+            </div>
+
+            <!-- Installation discrète de l'application (icône sur l'écran d'accueil / le bureau) -->
+            <div id="install-app-entry" class="install-app-entry" style="display:none;">
+                <button type="button" class="btn-text" onclick="installApp()">Installer l'application sur cet appareil</button>
+                <p id="install-app-help" class="install-app-help" hidden></p>
+            </div>
         </main>
     </div>
 
@@ -387,7 +399,7 @@
     <div id="modal-manage-groups" class="modal-overlay">
         <div class="modal modal-large group-management-modal">
             <div class="modal-header"><div><h2 id="manage-groups-title">Gérer mes groupes</h2><p class="group-modal-subtitle">Créez des groupes et sélectionnez les membres du club.</p></div><button class="close-btn" onclick="closeModal('modal-manage-groups')">&times;</button></div>
-            <div id="group-editing-banner" class="group-editing-banner" style="display:none;">✏️ Vous modifiez le groupe <strong id="group-editing-name"></strong></div>
+            <div id="group-editing-banner" class="group-editing-banner" style="display:none;">Vous modifiez le groupe <strong id="group-editing-name"></strong></div>
             <div class="group-editor-layout">
                 <section id="group-editor-panel" class="group-editor-panel">
                     <div class="group-editor-heading">
@@ -407,7 +419,7 @@
                             </div>
                         </div>
                     </div>
-                    <label class="group-notify-option"><input type="checkbox" id="new-group-notify"> <span>🔔 Activer les alertes de suivi pour ce groupe</span></label>
+                    <label class="group-notify-option"><input type="checkbox" id="new-group-notify"> <span>Activer les alertes de suivi pour ce groupe</span></label>
                     <div class="group-member-picker-heading">
                         <div><label for="group-member-search">Membres du groupe</label><span id="group-member-count" class="group-member-count"></span></div>
                         <input id="group-member-search" class="form-control group-member-search" type="search" placeholder="Rechercher un membre…" oninput="renderGroupMemberPicker()">
@@ -435,50 +447,87 @@
     <div id="modal-create-session" class="modal-overlay"><div class="modal modal-builder"><div class="modal-header" style="margin-bottom: 0; padding: 1.5rem; background: var(--surface);"><h2 id="modal-session-title-text">Créer une Séance</h2><button class="close-btn" onclick="closeModal('modal-create-session')">&times;</button></div><div class="builder-container"><div class="builder-sidebar"><div class="flex-between"><h3>Ressources</h3><button class="btn-outline" onclick="openCreateBlock()">+ Bloc</button></div><div id="builder-filters" class="filter-tags" style="margin-top:1rem;"></div><div id="builder-blocks-list"></div></div><div class="builder-main"><h3>Structure (Glissez-déposez)</h3><div id="session-sequence" style="flex:1; overflow-y:auto; border: 2px dashed #CBD5E1; padding:1rem; margin-bottom:1.5rem; background:var(--bg-color); border-radius:var(--radius-md);"></div><div class="form-group"><input type="text" id="session-name" class="form-control" placeholder="Nom de la séance..."></div><button id="save-session-button" class="btn-primary" style="width:100%; padding: 1.1rem;" onclick="saveSession()">Enregistrer la séance</button></div></div></div></div>
 
     <!-- MODAL : Attribuer avec Groupes -->
-    <div id="modal-assign-session" class="modal-overlay"><div class="modal assignment-modal"><div class="modal-header"><h2>Attribuer une séance</h2><button class="close-btn" onclick="closeModal('modal-assign-session')">&times;</button></div><div id="assign-groups-container" class="assignment-groups"></div><div class="group-member-picker-heading assignment-picker-heading"><div><label for="assignment-member-search">Tous les membres (athlètes et coachs)</label><span id="assignment-member-count" class="group-member-count">0 sélectionné</span></div><input id="assignment-member-search" class="form-control group-member-search" type="search" placeholder="Rechercher un membre…" oninput="renderAssignmentMemberPicker()"></div><div class="assignment-select-actions"><button class="btn-outline" type="button" onclick="selectAllAthletes()">☑️ Tout sélectionner</button></div><div id="athlete-checklist" class="group-member-picker assignment-member-picker"></div><button class="btn-primary assignment-submit-button" onclick="saveAssignments()">Valider l'attribution</button></div></div>
+    <div id="modal-assign-session" class="modal-overlay"><div class="modal assignment-modal"><div class="modal-header"><h2>Attribuer une séance</h2><button class="close-btn" onclick="closeModal('modal-assign-session')">&times;</button></div><div id="assign-groups-container" class="assignment-groups"></div><div class="group-member-picker-heading assignment-picker-heading"><div><label for="assignment-member-search">Tous les membres (athlètes et coachs)</label><span id="assignment-member-count" class="group-member-count">0 sélectionné</span></div><input id="assignment-member-search" class="form-control group-member-search" type="search" placeholder="Rechercher un membre…" oninput="renderAssignmentMemberPicker()"></div><div class="assignment-select-actions"><button class="btn-outline" type="button" onclick="selectAllAthletes()">Tout sélectionner</button></div><div id="athlete-checklist" class="group-member-picker assignment-member-picker"></div><button class="btn-primary assignment-submit-button" onclick="saveAssignments()">Valider l'attribution</button></div></div>
 
     <!-- MODAL : Vue Séance -->
     <div id="modal-view-session" class="modal-overlay" style="z-index: 1060;">
         <div class="modal modal-large" style="background:var(--bg-color); padding: 1rem;">
-            <div class="modal-header" style="background:var(--surface); padding:1.5rem; border-radius:var(--radius-md); margin-bottom: 1rem; border: none;">
-                <h2 id="view-session-title" style="margin:0; font-size: 1.6rem; color: var(--ffme-blue-dark);"></h2>
-                <button class="close-btn" onclick="closeModal('modal-view-session')">&times;</button>
+            <div class="modal-header view-session-header" style="background:var(--surface); padding:0.6rem 0.75rem 0.6rem 1rem; border-radius:var(--radius-md); margin-bottom: 0.75rem; border: none;">
+                <h2 id="view-session-title" class="view-session-title"></h2>
+                <div class="view-session-header-actions">
+                    <button id="btn-show-chrono" class="btn-outline chrono-toggle" type="button" style="display:none;" onclick="toggleChrono()" aria-expanded="false" aria-controls="chrono-container" aria-label="Afficher le chronomètre" title="Chronomètre"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M10 2.5h4M18.5 6.5l1.5-1.5"/></svg></button>
+                    <button class="close-btn" onclick="closeModal('modal-view-session')">&times;</button>
+                </div>
+                <!-- Chronomètre compact, dans l'en-tête collant : reste visible pendant le défilement -->
+                <div id="chrono-container" class="timer-panel">
+                    <div class="timer-main">
+                        <div class="timer-readout">
+                            <span id="timer-phase" class="timer-phase">Prêt</span>
+                            <span id="timer-display" class="timer-display">00:00</span>
+                            <span id="timer-round" class="timer-round"></span>
+                        </div>
+                        <div class="timer-controls">
+                            <button type="button" class="timer-btn timer-btn-start" onclick="startTimer()">Start</button>
+                            <button type="button" class="timer-btn" onclick="pauseTimer()">Pause</button>
+                            <button type="button" class="timer-btn" onclick="resetTimer()">Reset</button>
+                        </div>
+                    </div>
+                    <div class="timer-inputs">
+                        <label>Travail <input type="number" id="timer-work" value="10" min="1" inputmode="numeric"> s</label>
+                        <label>Repos <input type="number" id="timer-rest" value="20" min="0" inputmode="numeric"> s</label>
+                        <label>Séries <input type="number" id="timer-rounds" value="5" min="1" inputmode="numeric"></label>
+                    </div>
+                </div>
             </div>
 
             <!-- BLOC ATHLETE FORM -->
             <div id="view-session-athlete-form">
-                <div class="profile-section" style="padding: 1rem; border:none; margin-bottom:1rem;">
-                    <button class="btn-outline" style="width:100%;" onclick="document.getElementById('chrono-container').style.display='block'; this.style.display='none';">⏱️ Afficher le Chronomètre</button>
-                    <div id="chrono-container" class="timer-panel">
-                        <div class="timer-inputs">
-                            <div style="display:flex; flex-direction:column; align-items:center;"><label>Travail (s)</label><input type="number" id="timer-work" value="10"></div>
-                            <div style="display:flex; flex-direction:column; align-items:center;"><label>Repos (s)</label><input type="number" id="timer-rest" value="20"></div>
-                            <div style="display:flex; flex-direction:column; align-items:center;"><label>Séries</label><input type="number" id="timer-rounds" value="5"></div>
-                        </div>
-                        <div id="timer-phase" class="timer-phase">Prêt à travailler</div>
-                        <div id="timer-display" class="timer-display">00:00</div>
-                        <div style="display:flex; gap:0.75rem; justify-content:center;">
-                            <button class="btn-primary" style="background:white; color:var(--text-dark);" onclick="startTimer()">Start</button>
-                            <button class="btn-outline" style="color:white; border-color:white;" onclick="pauseTimer()">Pause</button>
-                            <button class="btn-outline" style="color:white; border-color:transparent;" onclick="resetTimer()">Reset</button>
-                        </div>
-                    </div>
-                </div>
 
                 <div id="view-session-content-athlete" style="max-height:45vh; overflow-y:auto; padding-right: 0.5rem; margin-bottom:1rem;"></div>
                 
-                <div style="background:var(--surface); padding:2rem; border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
-                    <h3 style="margin-top:0; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">Bilan global de fin de séance</h3>
-                    <label>Plaisir (1 = Aucun, 10 = Max) : <b id="val-plaisir">5</b></label>
-                    <input type="range" id="session-plaisir" class="rpe-slider" min="1" max="10" value="5" oninput="document.getElementById('val-plaisir').textContent=this.value">
-                    <label style="margin-top:1rem; display:block;">Difficulté globale ressentie (1 = Très facile, 10 = Extrême) : <b id="val-diff">5</b></label>
-                    <input type="range" id="session-difficulte" class="rpe-slider" min="1" max="10" value="5" oninput="document.getElementById('val-diff').textContent=this.value">
-                    <label style="margin-top:1rem; display:block;">État de fatigue (1 = Frais, 10 = Épuisé) : <b id="val-fatigue">5</b></label>
-                    <input type="range" id="session-fatigue" class="rpe-slider" min="1" max="10" value="5" oninput="document.getElementById('val-fatigue').textContent=this.value">
-                    <label style="font-weight:800; display:block; margin-top:2rem; margin-bottom:0.75rem;">Note / Lien vidéo :</label>
-                    <textarea id="session-annotation" class="form-control" placeholder="Comment t'es-tu senti ?..."></textarea>
-                    <button id="btn-validate-session" class="btn-secondary" style="width:100%; margin-top:2rem; padding: 1.1rem; font-size:1.1rem;">✓ Valider ma séance</button>
-                </div>
+                <div class="session-review-divider" aria-hidden="true"><span>Fin de la séance</span></div>
+                <section id="session-review" class="session-review" aria-labelledby="session-review-title">
+                    <div class="session-review-heading">
+                        <span class="session-review-step" aria-hidden="true">✓</span>
+                        <div>
+                            <h3 id="session-review-title">Bilan de la séance</h3>
+                            <p>Comment s'est passée ta séance dans l'ensemble ?</p>
+                        </div>
+                    </div>
+
+                    <div class="session-review-metrics">
+                        <div class="review-metric">
+                            <div class="review-metric-top">
+                                <label for="session-plaisir">Plaisir</label>
+                                <span class="review-metric-value"><span id="val-plaisir">5</span>/10</span>
+                            </div>
+                            <input type="range" id="session-plaisir" class="rpe-slider-custom review-slider" data-scale="positive" min="1" max="10" value="5" oninput="updateReviewSlider(this, 'val-plaisir')">
+                            <div class="review-metric-scale"><span>Aucun</span><span>Énorme</span></div>
+                        </div>
+
+                        <div class="review-metric">
+                            <div class="review-metric-top">
+                                <label for="session-difficulte">Difficulté</label>
+                                <span class="review-metric-value"><span id="val-diff">5</span>/10</span>
+                            </div>
+                            <input type="range" id="session-difficulte" class="rpe-slider-custom review-slider" data-scale="effort" min="1" max="10" value="5" oninput="updateReviewSlider(this, 'val-diff')">
+                            <div class="review-metric-scale"><span>Très facile</span><span>Extrême</span></div>
+                        </div>
+
+                        <div class="review-metric">
+                            <div class="review-metric-top">
+                                <label for="session-fatigue">Fatigue</label>
+                                <span class="review-metric-value"><span id="val-fatigue">5</span>/10</span>
+                            </div>
+                            <input type="range" id="session-fatigue" class="rpe-slider-custom review-slider" data-scale="effort" min="1" max="10" value="5" oninput="updateReviewSlider(this, 'val-fatigue')">
+                            <div class="review-metric-scale"><span>Frais</span><span>Épuisé</span></div>
+                        </div>
+                    </div>
+
+                    <label class="session-review-notes-label" for="session-annotation">Notes</label>
+                    <textarea id="session-annotation" class="form-control session-review-notes" placeholder="Comment t'es-tu senti ?…"></textarea>
+                    <button id="btn-validate-session" class="btn-secondary session-review-submit">✓ Valider ma séance</button>
+                </section>
             </div>
 
             <!-- BLOC COACH READONLY -->
@@ -501,7 +550,7 @@
                             <div style="font-size:1.5rem; font-weight:800; color:var(--ffme-red);" id="ro-val-fatigue">-</div>
                         </div>
                     </div>
-                    <label style="font-weight:800; display:block; margin-bottom:0.5rem;">Note / Lien vidéo :</label>
+                    <label style="font-weight:800; display:block; margin-bottom:0.5rem;">Notes</label>
                     <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md); font-size:0.95rem; white-space:pre-wrap; min-height:60px;" id="ro-val-note"></div>
                 </div>
             </div>
@@ -509,17 +558,18 @@
     </div>
     
     <!-- MODAL : VUE COACH SUR ATHLETE -->
-    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div id="view-athlete-role-control" class="profile-section" style="display:none;"><h3>Rôle dans le club</h3><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><select id="view-athlete-role" class="form-control" style="max-width:320px;"><option value="athlete">Athlète</option><option value="coach">Coach</option><option value="gerant">Gérant du club</option></select><button class="btn-primary" onclick="updateClubMemberRole()">Enregistrer le rôle</button></div></div><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div></div><div id="coach-ath-view-historique" style="display:none;"><section class="coach-history-section"><h3>Séances en cours</h3><div id="coach-ath-current-sessions" class="grid"></div></section><section class="coach-history-section"><h3>Séances réalisées</h3><div id="coach-ath-history-list" class="grid"></div></section></div></div></div>
+    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div><div id="view-athlete-role-control" class="profile-section" style="display:none;"><h3>Rôle dans le club</h3><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><select id="view-athlete-role" class="form-control" style="max-width:320px;"><option value="athlete">Athlète</option><option value="coach">Coach</option><option value="gerant">Gérant du club</option></select><button class="btn-primary" onclick="updateClubMemberRole()">Enregistrer le rôle</button></div></div></div><div id="coach-ath-view-historique" style="display:none;"><section class="coach-history-section"><h3>Séances en cours</h3><div id="coach-ath-current-sessions" class="grid"></div></section><section class="coach-history-section"><h3>Séances réalisées</h3><div id="coach-ath-history-list" class="grid"></div></section></div></div></div>
 
     <!-- Modals Skills & Calendar -->
     <div id="modal-skills" class="modal-overlay" style="z-index:1050;"><div class="modal modal-large"><div class="modal-header"><h2 style="font-size:1.5rem;">Auto-évaluation (0 à 10)</h2><button class="close-btn" onclick="closeModal('modal-skills')">&times;</button></div><div style="display: flex; gap: 2rem; flex-wrap:wrap;"><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-blue); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Technique & Gestuelle</h3><div id="skills-form-t1" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--danger); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Physique & Mental</h3><div id="skills-form-t2" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div></div><button class="btn-primary" style="width:100%; margin-top:2rem; padding:1.25rem; font-size:1.15rem;" onclick="saveSkills()">Enregistrer</button></div></div>
-    <div id="modal-calendar-note" class="modal-overlay" style="z-index: 1050;"><div class="modal" style="max-width: 480px;"><div class="modal-header"><h3 id="cal-note-date" style="margin:0; font-size: 1.35rem; color:var(--ffme-blue-dark);">Date</h3><button class="close-btn" onclick="closeModal('modal-calendar-note')">&times;</button></div><div class="form-group"><label>Statut pour ce jour :</label><select id="cal-note-status" class="form-control"><option value="false">Repos</option><option value="true">Entraînement</option></select></div><div class="form-group"><label>Lier à une séance :</label><select id="cal-note-session" class="form-control"></select></div><div class="form-group"><label>Note libre :</label><input type="text" id="cal-note-text" class="form-control"></div><button class="btn-primary" style="width:100%; margin-top:1rem; padding:1rem;" onclick="saveCalendarNote()">Valider</button></div></div>
+    <div id="modal-calendar-note" class="modal-overlay" style="z-index: 1050;"><div class="modal" style="max-width: 480px;"><div class="modal-header"><h3 id="cal-note-date" style="margin:0; font-size: 1.35rem; color:var(--ffme-blue-dark);">Date</h3><button class="close-btn" onclick="closeModal('modal-calendar-note')">&times;</button></div><div class="form-group"><label>Statut pour ce jour :</label><select id="cal-note-status" class="form-control"><option value="false">Repos</option><option value="true">Entraînement</option></select></div><div class="form-group"><label>Lier à une séance :</label><select id="cal-note-session" class="form-control" onchange="updateCalNoteSessionButton()"></select><button id="cal-note-open-session" type="button" class="btn-outline cal-note-open-session" style="display:none;" onclick="openCalendarLinkedSession()">Voir la séance liée</button></div><div class="form-group"><label>Note libre :</label><input type="text" id="cal-note-text" class="form-control"></div><button class="btn-primary" style="width:100%; margin-top:1rem; padding:1rem;" onclick="saveCalendarNote()">Valider</button></div></div>
 
     <div id="app-dialog-overlay" class="app-dialog-overlay" style="display:none;" onclick="handleAppDialogBackdrop(event)">
         <section class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
             <div class="app-dialog-icon" id="app-dialog-icon" aria-hidden="true">ℹ</div>
             <h2 id="app-dialog-title">Information</h2>
             <p id="app-dialog-message"></p>
+            <input id="app-dialog-input" class="form-control" type="text" maxlength="120" hidden onkeydown="if(event.key==='Enter') submitAppDialogPrompt()">
             <div id="app-dialog-actions" class="app-dialog-actions"></div>
         </section>
     </div>

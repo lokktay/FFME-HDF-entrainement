@@ -11,6 +11,14 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
+// === CONFIGURATION DES NOTIFICATIONS PUSH (Worker Cloudflare) ===
+// À remplir après la mise en ligne du Worker (voir notifications-worker/README.md).
+// Tant que ces deux valeurs sont vides, les notifications sont simplement désactivées.
+const PUSH_CONFIG = {
+    workerUrl: '',        // ex. 'https://ffme-hdf-entrainement.votre-compte.workers.dev'
+    vapidPublicKey: ''    // clé publique VAPID (format base64url)
+};
+
 const defaultCategories = ['Échauffement', 'Physique', 'Volume', 'Rési', 'Force', 'Lecture', 'Mental', 'Débrief'];
 const themes1 = ["Dynamiques", "Statiques", "Talon", "Contre-Pointe", "Equilibre", "Gestes en dévers", "Opposition", "Compression", "Bacs", "Réglettes", "Pinces", "Bi-doigt"];
 const themes2 = ["Force bras", "Force doigts", "Endurance Phys.", "Souplesse", "Position pieds", "Position corps", "Coordination", "Gestion mentale", "Lecture", "En tête", "Endu. mentale"];
@@ -57,6 +65,7 @@ let viewedGroupId = null;
 let isRegistering = false; 
 let athleteClubMemberSearch = '';
 let athleteClubSessionSearch = '';
+let globalLibraryEntries = [];
 
 function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, char => ({
@@ -84,6 +93,30 @@ function showAppConfirm(message) {
     });
 }
 
+function showAppChoice(message, choices) {
+    return new Promise(resolve => {
+        appDialogQueue.push({ type: 'choice', message: String(message), choices, resolve });
+        showNextAppDialog();
+    });
+}
+
+function showAppPrompt(message, defaultValue = '') {
+    return new Promise(resolve => {
+        appDialogQueue.push({ type: 'prompt', message: String(message), defaultValue: String(defaultValue), resolve });
+        showNextAppDialog();
+    });
+}
+
+function finishAppDialogChoice(index) {
+    if(!activeAppDialog || !activeAppDialog.choices || !activeAppDialog.choices[index]) return;
+    finishAppDialog(activeAppDialog.choices[index].value);
+}
+
+function submitAppDialogPrompt() {
+    const input = document.getElementById('app-dialog-input');
+    finishAppDialog(input ? input.value : '');
+}
+
 function showNextAppDialog() {
     if(activeAppDialog || appDialogQueue.length === 0) return;
     const overlay = document.getElementById('app-dialog-overlay');
@@ -97,15 +130,39 @@ function showNextAppDialog() {
 
     activeAppDialog = appDialogQueue.shift();
     appDialogPreviousFocus = document.activeElement;
-    const isConfirm = activeAppDialog.type === 'confirm';
-    document.getElementById('app-dialog-title').textContent = isConfirm ? 'Confirmation' : 'Information';
-    document.getElementById('app-dialog-icon').textContent = isConfirm ? '?' : 'ℹ';
+    const type = activeAppDialog.type;
+    const isQuestion = type !== 'alert';
+    document.getElementById('app-dialog-title').textContent = type === 'choice' ? 'Choisir' : isQuestion ? 'Confirmation' : 'Information';
+    document.getElementById('app-dialog-icon').textContent = isQuestion ? '?' : 'ℹ';
     document.getElementById('app-dialog-message').textContent = activeAppDialog.message;
-    document.getElementById('app-dialog-actions').innerHTML = isConfirm
-        ? '<button class="btn-outline" type="button" onclick="finishAppDialog(false)">Annuler</button><button class="btn-primary" type="button" onclick="finishAppDialog(true)">Confirmer</button>'
-        : '<button class="btn-primary" type="button" onclick="finishAppDialog(true)">OK</button>';
+    const input = document.getElementById('app-dialog-input');
+    if(input) {
+        input.hidden = type !== 'prompt';
+        input.value = type === 'prompt' ? activeAppDialog.defaultValue : '';
+    }
+    const cancelButton = '<button class="btn-outline" type="button" onclick="finishAppDialog(false)">Annuler</button>';
+    let actionsHtml;
+    if(type === 'confirm') {
+        actionsHtml = cancelButton + '<button class="btn-primary" type="button" onclick="finishAppDialog(true)">Confirmer</button>';
+    } else if(type === 'choice') {
+        actionsHtml = '<div class="app-dialog-choices">' + activeAppDialog.choices.map((choice, index) =>
+            `<button class="btn-primary" type="button" onclick="finishAppDialogChoice(${index})">${escapeHtml(choice.label)}</button>`
+        ).join('') + '</div>' + cancelButton;
+    } else if(type === 'prompt') {
+        actionsHtml = cancelButton + '<button class="btn-primary" type="button" onclick="submitAppDialogPrompt()">Valider</button>';
+    } else {
+        actionsHtml = '<button class="btn-primary" type="button" onclick="finishAppDialog(true)">OK</button>';
+    }
+    const actions = document.getElementById('app-dialog-actions');
+    actions.innerHTML = actionsHtml;
+    actions.classList.toggle('app-dialog-actions-choice', type === 'choice');
     overlay.style.display = 'flex';
-    document.getElementById('app-dialog-actions').querySelector('button').focus();
+    if(type === 'prompt' && input) {
+        input.focus();
+        input.select();
+    } else {
+        document.getElementById('app-dialog-actions').querySelector('button').focus();
+    }
 }
 
 function finishAppDialog(result) {
@@ -113,17 +170,44 @@ function finishAppDialog(result) {
     const completedDialog = activeAppDialog;
     activeAppDialog = null;
     document.getElementById('app-dialog-overlay').style.display = 'none';
-    if(completedDialog.resolve) completedDialog.resolve(Boolean(result));
+    if(completedDialog.resolve) {
+        if(completedDialog.type === 'choice' || completedDialog.type === 'prompt') {
+            completedDialog.resolve(result === false ? null : result);
+        } else {
+            completedDialog.resolve(Boolean(result));
+        }
+    }
     if(appDialogPreviousFocus && typeof appDialogPreviousFocus.focus === 'function') appDialogPreviousFocus.focus();
     appDialogPreviousFocus = null;
     showNextAppDialog();
 }
 
-function handleAppDialogBackdrop(event) {
-    if(event.target === event.currentTarget && activeAppDialog && activeAppDialog.type === 'alert') {
-        finishAppDialog(true);
-    }
+// Sur ordinateur (souris), un clic en dehors d'une fenêtre la ferme.
+// Sur mobile, seules les notifications simples se ferment ainsi, pour éviter les fermetures accidentelles.
+const canCloseByClickOutside = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+let backdropPressTarget = null;
+
+document.addEventListener('mousedown', event => {
+    backdropPressTarget = event.target;
+}, true);
+
+function isBackdropClick(event) {
+    // Le clic doit commencer ET finir sur le fond : une sélection de texte qui déborde ne ferme pas la fenêtre.
+    return event.target === event.currentTarget && backdropPressTarget === event.currentTarget;
 }
+
+function handleAppDialogBackdrop(event) {
+    if(!activeAppDialog || !isBackdropClick(event)) return;
+    if(activeAppDialog.type === 'alert') return finishAppDialog(true);
+    if(canCloseByClickOutside()) finishAppDialog(false);
+}
+
+document.addEventListener('click', event => {
+    const overlay = event.target;
+    if(!overlay.classList || !overlay.classList.contains('modal-overlay') || !overlay.id) return;
+    if(backdropPressTarget !== overlay || !canCloseByClickOutside()) return;
+    closeModal(overlay.id);
+});
 
 document.addEventListener('keydown', event => {
     if(event.key === 'Escape' && activeAppDialog) {
@@ -555,6 +639,7 @@ function renderProfileClubs() {
     if([...availableClubs, { id: '_new_' }].some(club => club.id === selectedClubId)) {
         clubSelect.value = selectedClubId;
     }
+    enhanceClubSelect(clubSelect);
     handleAvailableClubChange();
 }
 
@@ -1080,6 +1165,11 @@ function startRealtimeListeners(clubId) {
     const listenerGeneration = realtimeListenerGeneration;
     reportedRealtimeErrors.clear();
     sessionAccessSyncFailedGeneration = null;
+    listeners.push(db.collection('globalLibrary').onSnapshot(snap => {
+        if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;
+        globalLibraryEntries = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        refreshCurrentTab();
+    }, error => handleRealtimeListenerError("la bibliothèque globale", listenerGeneration, error)));
     clubMembers = [];
     clubBlocks = [];
     clubSessions = [];
@@ -1286,6 +1376,179 @@ function refreshCurrentTab() {
        document.getElementById('coach-ath-view-historique').style.display !== 'none') {
         renderCoachAthleteHistory();
     }
+}
+
+function getGlobalLibrarySessions() {
+    return globalLibraryEntries
+        .filter(entry => entry.kind === 'session' && Array.isArray(entry.blocks))
+        .sort((a, b) => (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0) -
+                         (a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0));
+}
+
+function canManageGlobalLibraryEntry(entry) {
+    return Boolean(currentUser && entry && (entry.authorId === currentUser.id || isPlatformAdmin()));
+}
+
+function toGlobalLibraryBlocks(blockSnapshots) {
+    return blockSnapshots.slice(0, 100).map(block => ({
+        category: String(block.category || '').slice(0, 80),
+        title: String(block.title || '').slice(0, 200),
+        description: String(block.description || '').slice(0, 5000)
+    }));
+}
+
+async function shareSession(id) {
+    const destination = await showAppChoice("Où voulez-vous partager cette séance ?", [
+        { label: 'Bibliothèque du Club', value: 'club' },
+        { label: 'Bibliothèque (tous)', value: 'global' }
+    ]);
+    if(destination === 'club') return publishToClub(id);
+    if(destination === 'global') return publishToGlobalLibrary(id);
+}
+
+async function publishToGlobalLibrary(id) {
+    const session = clubSessions.find(item => item.id === id && item.authorId === currentUser.id && !item.archived);
+    if(!session || !hasCoachRights()) return alert("Seul le coach propriétaire peut partager cette séance dans la bibliothèque.");
+    const alreadyShared = globalLibraryEntries.some(entry => entry.authorId === currentUser.id && entry.sourceSessionId === session.id);
+    if(alreadyShared && !await showAppConfirm("Cette séance est déjà dans la bibliothèque commune. La publier à nouveau ?")) return;
+    try {
+        const blockSnapshots = await getClubSessionBlockSnapshots(session);
+        await db.collection('globalLibrary').add({
+            kind: 'session',
+            name: String(session.name || 'Séance').slice(0, 120),
+            blocks: toGlobalLibraryBlocks(blockSnapshots),
+            sourceSessionId: session.id,
+            authorId: currentUser.id,
+            authorName: String(currentUser.username || 'Coach').slice(0, 120),
+            clubName: String(getMyClubObj().name || '').slice(0, 120),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        setSessionLibraryTab('global');
+    } catch(error) {
+        console.error("Erreur de partage dans la bibliothèque commune :", error);
+        alert("Impossible de partager cette séance : " + error.message);
+    }
+}
+
+async function importGlobalLibrarySession(entryId) {
+    const entry = globalLibraryEntries.find(item => item.id === entryId);
+    if(!entry) return alert("Cette séance n'est plus disponible.");
+    if(!hasCoachRights()) return alert("Seuls les coachs peuvent importer une séance.");
+    try {
+        const stamp = Date.now();
+        const batch = db.batch();
+        const blockIds = (entry.blocks || []).map((block, index) => {
+            const blockId = `blk_${stamp}_${index}`;
+            batch.set(db.collection('blocks').doc(blockId), {
+                id: blockId,
+                title: block.title || 'Exercice',
+                category: block.category || 'Autre',
+                description: block.description || '',
+                clubId: currentUser.clubId,
+                userId: currentUser.id,
+                authorId: currentUser.id
+            });
+            return blockId;
+        });
+        const newSession = {
+            id: 'sess_' + stamp,
+            name: entry.name || 'Séance importée',
+            blocks: blockIds,
+            clubId: currentUser.clubId,
+            authorId: currentUser.id,
+            isShared: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        batch.set(db.collection('sessions').doc(newSession.id), newSession);
+        addSessionCreationUsageEvent(batch, newSession);
+        await batch.commit();
+        setSessionLibraryTab('personal');
+    } catch(error) {
+        console.error("Erreur d'import depuis la bibliothèque commune :", error);
+        alert("Impossible d'importer cette séance : " + error.message);
+    }
+}
+
+async function deleteGlobalLibraryEntry(entryId) {
+    const entry = globalLibraryEntries.find(item => item.id === entryId);
+    if(!entry) return;
+    if(!canManageGlobalLibraryEntry(entry)) return alert("Seuls l'auteur de la séance et les administrateurs peuvent la retirer.");
+    if(!await showAppConfirm('Retirer cette séance de la bibliothèque commune ?')) return;
+    try {
+        await db.collection('globalLibrary').doc(entryId).delete();
+    } catch(error) {
+        console.error("Erreur de suppression de la bibliothèque commune :", error);
+        alert("Impossible de retirer cette séance : " + error.message);
+    }
+}
+
+async function editGlobalLibraryEntry(entryId) {
+    const entry = globalLibraryEntries.find(item => item.id === entryId);
+    if(!entry) return alert("Cette séance n'est plus disponible.");
+    if(!canManageGlobalLibraryEntry(entry)) return alert("Seuls l'auteur de la séance et les administrateurs peuvent la modifier.");
+
+    const sourceSession = entry.authorId === currentUser.id
+        ? clubSessions.find(session => session.id === entry.sourceSessionId && !session.archived)
+        : null;
+    const choices = [{ label: 'Renommer', value: 'rename' }];
+    if(sourceSession) choices.push({ label: 'Mettre à jour depuis ma séance', value: 'sync' });
+    const action = choices.length === 1 ? 'rename' : await showAppChoice(`Modifier « ${entry.name || 'Séance'} »`, choices);
+    if(!action) return;
+
+    try {
+        const ref = db.collection('globalLibrary').doc(entryId);
+        if(action === 'rename') {
+            const name = await showAppPrompt('Nouveau nom de la séance :', entry.name || '');
+            if(name === null) return;
+            const trimmed = name.trim().slice(0, 120);
+            if(!trimmed) return alert("Le nom ne peut pas être vide.");
+            await ref.update({ name: trimmed });
+        } else {
+            if(!await showAppConfirm("Remplacer les exercices publiés par la version actuelle de votre séance « " + sourceSession.name + " » ?")) return;
+            const blockSnapshots = await getClubSessionBlockSnapshots(sourceSession);
+            await ref.update({
+                name: String(sourceSession.name || entry.name || 'Séance').slice(0, 120),
+                blocks: toGlobalLibraryBlocks(blockSnapshots)
+            });
+        }
+    } catch(error) {
+        console.error("Erreur de modification de la bibliothèque commune :", error);
+        alert("Impossible de modifier cette séance : " + error.message);
+    }
+}
+
+function toggleGlobalLibraryDetails(entryId) {
+    const details = document.getElementById('global-lib-details-' + entryId);
+    if(details) details.hidden = !details.hidden;
+}
+
+function renderGlobalLibrarySessions() {
+    let entries = getGlobalLibrarySessions();
+    if(coachSessionSearch) {
+        const query = coachSessionSearch.toLowerCase();
+        entries = entries.filter(entry => `${entry.name || ''} ${entry.authorName || ''} ${entry.clubName || ''}`.toLowerCase().includes(query));
+    }
+    return entries.map(entry => {
+        const safeId = escapeHtml(entry.id);
+        const deleteButton = canManageGlobalLibraryEntry(entry)
+            ? `<button class="btn-icon" title="Modifier" onclick="editGlobalLibraryEntry('${safeId}')">✏️</button><button class="btn-icon" title="Retirer de la bibliothèque" style="color:var(--danger);" onclick="deleteGlobalLibraryEntry('${safeId}')">🗑️</button>`
+            : '';
+        const author = [entry.authorName, entry.clubName].filter(Boolean).map(escapeHtml).join(' · ');
+        const blocksList = (entry.blocks || []).map(block =>
+            `<li><strong>${escapeHtml(block.title || 'Exercice')}</strong>${block.category ? ` <span class="global-library-block-cat">${escapeHtml(block.category)}</span>` : ''}${block.description ? `<div class="global-library-block-desc">${escapeHtml(block.description)}</div>` : ''}</li>`
+        ).join('');
+        return `<div class="card">
+                    <div class="card-header" style="align-items:flex-start;">
+                        <div class="card-title" style="flex:1;">${escapeHtml(entry.name || 'Séance')}</div>
+                        <div style="display:flex; gap:0.25rem;">${deleteButton}</div>
+                    </div>
+                    <p style="font-size:0.95rem; color:var(--text-muted); font-weight:600; margin-bottom:0.5rem; margin-top:0;">${(entry.blocks || []).length} exercices</p>
+                    <p class="global-library-author">Publié par ${author || 'un coach'}</p>
+                    <button class="btn-outline" style="width:100%; margin-bottom:0.75rem;" onclick="toggleGlobalLibraryDetails('${safeId}')">Voir les exercices</button>
+                    <ol id="global-lib-details-${safeId}" class="global-library-blocks" hidden>${blocksList}</ol>
+                    <button class="btn-primary" style="width:100%; margin-top:auto;" onclick="importGlobalLibrarySession('${safeId}')">Copier dans mes séances</button>
+                </div>`;
+    }).join('') || `<p style='color:var(--text-muted); grid-column:1/-1; padding:2rem; text-align:center;'>${coachSessionSearch ? 'Aucune séance ne correspond à votre recherche.' : 'La bibliothèque commune est encore vide. Partagez une de vos séances depuis « Mes Séances (Privées) ».'}</p>`;
 }
 
 function updateAdminPeriodMode() {
@@ -1504,7 +1767,95 @@ function updateAuthClubList() {
     allClubs.forEach(c => select.innerHTML += `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`);
     select.innerHTML += `<option value="_new_" style="font-weight:700; color:var(--ffme-blue-dark);">➕ Créer un nouveau club...</option>`;
     if(currentVal) select.value = currentVal;
+    enhanceClubSelect(select);
 }
+
+// === SÉLECTEUR DE CLUB AVEC PHOTOS ===
+// Remplace visuellement un <select> de clubs par une liste avec la photo de chaque club.
+// Le <select> d'origine reste la source de vérité (caché) : son événement « change » est déclenché à chaque choix.
+function getClubPickerAvatarHtml(value) {
+    if(value === '_new_') return '<span class="club-picker-avatar club-picker-avatar-new" aria-hidden="true">+</span>';
+    const club = allClubs.find(item => item.id === value);
+    if(!club) return '<span class="club-picker-avatar club-picker-avatar-empty" aria-hidden="true"></span>';
+    if(club.avatar) return `<img class="club-picker-avatar" src="${escapeHtml(club.avatar)}" alt="">`;
+    return `<span class="club-picker-avatar" aria-hidden="true">${escapeHtml((club.name || '?').charAt(0).toUpperCase())}</span>`;
+}
+
+function getClubPickerLabel(option) {
+    // Retire les symboles décoratifs en tête (« ➕ », « ＋ »…) : l'avatar les remplace
+    return option.textContent.replace(/^[^\p{L}\p{N}]+/u, '').trim();
+}
+
+function enhanceClubSelect(select) {
+    if(!select) return;
+    let picker = select.nextElementSibling;
+    if(!picker || !picker.classList.contains('club-picker')) {
+        picker = document.createElement('div');
+        picker.className = 'club-picker';
+        select.insertAdjacentElement('afterend', picker);
+    }
+    select.classList.add('club-picker-native');
+    select.tabIndex = -1;
+    select.setAttribute('aria-hidden', 'true');
+
+    const options = [...select.options];
+    const selected = options.find(option => option.value === select.value) || options[0];
+    const placeholder = selected && selected.value ? getClubPickerLabel(selected) : (options[0] ? getClubPickerLabel(options[0]) : 'Choisir un club');
+    const choices = options.filter(option => option.value);
+
+    picker.innerHTML = `
+        <button type="button" class="club-picker-toggle" aria-haspopup="listbox" aria-expanded="false">
+            ${getClubPickerAvatarHtml(selected ? selected.value : '')}
+            <span class="club-picker-label${selected && selected.value ? '' : ' is-placeholder'}">${escapeHtml(placeholder)}</span>
+            <span class="club-picker-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="club-picker-list" role="listbox" hidden>
+            ${choices.map(option => `
+                <button type="button" role="option" class="club-picker-option${option.value === select.value ? ' selected' : ''}${option.value === '_new_' ? ' is-create' : ''}" aria-selected="${option.value === select.value}" data-value="${escapeHtml(option.value)}">
+                    ${getClubPickerAvatarHtml(option.value)}
+                    <span>${escapeHtml(getClubPickerLabel(option))}</span>
+                </button>`).join('') || '<p class="club-picker-empty">Aucun club disponible.</p>'}
+        </div>`;
+
+    const toggle = picker.querySelector('.club-picker-toggle');
+    const list = picker.querySelector('.club-picker-list');
+    toggle.addEventListener('click', event => {
+        event.stopPropagation();
+        const willOpen = list.hidden;
+        closeAllClubPickers();
+        list.hidden = !willOpen;
+        toggle.setAttribute('aria-expanded', String(willOpen));
+        if(willOpen) {
+            const current = list.querySelector('.club-picker-option.selected') || list.querySelector('.club-picker-option');
+            if(current) current.focus();
+        }
+    });
+    list.querySelectorAll('.club-picker-option').forEach(optionButton => {
+        optionButton.addEventListener('click', event => {
+            event.stopPropagation();
+            select.value = optionButton.dataset.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            enhanceClubSelect(select);
+            const newToggle = picker.querySelector('.club-picker-toggle');
+            if(newToggle) newToggle.focus();
+        });
+    });
+}
+
+function closeAllClubPickers() {
+    document.querySelectorAll('.club-picker-list').forEach(list => {
+        list.hidden = true;
+        const toggle = list.parentElement && list.parentElement.querySelector('.club-picker-toggle');
+        if(toggle) toggle.setAttribute('aria-expanded', 'false');
+    });
+}
+
+document.addEventListener('click', event => {
+    if(!event.target.closest || !event.target.closest('.club-picker')) closeAllClubPickers();
+});
+document.addEventListener('keydown', event => {
+    if(event.key === 'Escape') closeAllClubPickers();
+});
 
 function renderFilterTags(containerId, categories, activeCategory, onSelect) {
     const container = document.getElementById(containerId);
@@ -1755,11 +2106,12 @@ function showApp() {
     document.getElementById('app-content').style.display = 'block';
     const adminNav = document.getElementById('nav-platform-admin');
     const chatButton = document.querySelector('.chat-btn-float');
-    adminNav.style.display = isPlatformAdmin() ? 'inline-block' : 'none';
     if(chatButton) chatButton.style.display = '';
     document.querySelectorAll('#main-nav button:not(#btn-logout)').forEach(button => button.style.display = '');
+    // Après la réinitialisation ci-dessus : seul un administrateur de la plateforme voit ce bouton.
+    adminNav.style.display = isPlatformAdmin() ? 'inline-block' : 'none';
     const activeRole = getClubRole();
-    let userText = `👤 ${escapeHtml(currentUser.username)} <span style="opacity:0.7; font-size:0.8rem; margin-left:4px;">(${getRoleLabel(activeRole)})</span>`;
+    let userText = `👤 ${escapeHtml(currentUser.username)} <span class="header-user-role" style="opacity:0.7; font-size:0.8rem; margin-left:4px;">(${getRoleLabel(activeRole)})</span>`;
     if(originalParentUser) userText += ` <span style="font-size:0.75rem; background:var(--primary); color:white; padding:2px 6px; border-radius:4px; margin-left:8px; font-weight:700;">Vue Enfant</span>`;
     document.getElementById('header-user-info-text').innerHTML = userText;
     
@@ -1775,6 +2127,7 @@ function showApp() {
         switchTab('athlete-sessions');
     }
     if(!currentUser.clubId) switchTab('athlete-profile');
+    refreshPushState();
     const age = (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25);
     const btnLink = document.getElementById('btn-link-child');
     if(btnLink) btnLink.style.display = age >= 18 && !originalParentUser ? 'inline-block' : 'none';
@@ -1807,8 +2160,23 @@ function switchTab(tab) {
     }
     refreshCurrentTab();
 }
-function openModal(id) { document.getElementById(id).style.display = 'flex'; }
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function openModal(id) {
+    document.getElementById(id).style.display = 'flex';
+    if(id === 'modal-view-session') {
+        // Pas de messagerie pendant la visualisation d'une séance
+        document.body.classList.add('session-view-open');
+        const chatPanel = document.getElementById('global-chat-panel');
+        if(chatPanel) chatPanel.style.display = 'none';
+    }
+}
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+    if(id === 'modal-view-session') {
+        document.body.classList.remove('session-view-open');
+        resetTimer();
+        setChronoAvailable(false);
+    }
+}
 
 // === NOTIFICATIONS ===
 async function pushNotification(text) {
@@ -2276,7 +2644,7 @@ function openEditSession(id) {
 function setCoachBlockFilter(cat) { coachBlockFilter = cat; renderCoachDashboard(); }
 function updateCoachBlockSearch(val) { coachBlockSearch = val; renderCoachDashboard(); }
 function updateCoachSessionSearch(val) { coachSessionSearch = val; renderCoachDashboard(); }
-function setSessionLibraryTab(tab) { currentSessionLibraryTab = tab; document.getElementById('tab-btn-perso').classList.toggle('active', tab === 'personal'); document.getElementById('tab-btn-club').classList.toggle('active', tab === 'club'); renderCoachDashboard(); }
+function setSessionLibraryTab(tab) { currentSessionLibraryTab = tab; document.getElementById('tab-btn-perso').classList.toggle('active', tab === 'personal'); document.getElementById('tab-btn-club').classList.toggle('active', tab === 'club'); document.getElementById('tab-btn-global').classList.toggle('active', tab === 'global'); renderCoachDashboard(); }
 
 function renderCoachDashboard() {
     renderNotifications();
@@ -2288,12 +2656,16 @@ function renderCoachDashboard() {
     if (coachBlockSearch) fBlocks = fBlocks.filter(b => (b.title || '').toLowerCase().includes(coachBlockSearch.toLowerCase()));
     document.getElementById('coach-blocks-grid').innerHTML = fBlocks.map(b => `<div class="card"><div class="card-header"><span class="card-category">${escapeHtml(b.category)}</span><div style="display:flex;gap:0.25rem;"><button class="btn-icon" style="padding:0;" onclick="openEditBlock('${escapeHtml(b.id)}')">✏️</button><button class="btn-icon" style="padding:0; color:var(--danger);" onclick="deleteBlock('${escapeHtml(b.id)}')">🗑️</button></div></div><div class="card-title">${escapeHtml(b.title)}</div><p style="font-size:0.95rem; color:var(--text-muted);">${escapeHtml(b.description)}</p></div>`).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; padding:2rem; text-align:center;'>Aucun bloc personnel créé.</p>";
     
+    if (currentSessionLibraryTab === 'global') {
+        document.getElementById('coach-sessions-grid').innerHTML = renderGlobalLibrarySessions();
+        return;
+    }
     let tSessions = currentSessionLibraryTab === 'personal'
         ? clubSessions.filter(s => !s.archived && s.authorId === currentUser.id && !s.isShared)
         : clubSessions.filter(s => !s.archived && s.isShared);
     if (coachSessionSearch) tSessions = tSessions.filter(s => (s.name || '').toLowerCase().includes(coachSessionSearch.toLowerCase()));
     document.getElementById('coach-sessions-grid').innerHTML = tSessions.map(s => {
-        let shareBtn = currentSessionLibraryTab === 'personal' ? `<button class="btn-outline" style="width:100%; margin-bottom:1rem;" onclick="publishToClub('${escapeHtml(s.id)}')">Partager au Club</button>` : '';
+        let shareBtn = currentSessionLibraryTab === 'personal' ? `<button class="btn-outline" style="width:100%; margin-bottom:1rem;" onclick="shareSession('${escapeHtml(s.id)}')">Partager</button>` : '';
         let actions = `<button class="btn-icon" title="Dupliquer" onclick="duplicateSession('${escapeHtml(s.id)}')">📋</button>`;
         if(canManageClubSession(s)) {
             actions += ` <button class="btn-icon" title="Modifier" onclick="openEditSession('${escapeHtml(s.id)}')">✏️</button> <button class="btn-icon" style="color:var(--danger);" title="Supprimer" onclick="deleteSession('${escapeHtml(s.id)}')">🗑️</button>`;
@@ -2311,10 +2683,10 @@ function renderCoachDashboard() {
                         <div class="card-title" style="flex:1;">${escapeHtml(s.name)}</div>
                         <div style="display:flex; gap:0.25rem;">${actions}</div>
                     </div>
-                    <p style="font-size:0.95rem; color:var(--text-muted); font-weight:600; margin-bottom:1.5rem; margin-top:0;">🧗 ${(s.blocks || []).length} exercices</p>
+                    <p style="font-size:0.95rem; color:var(--text-muted); font-weight:600; margin-bottom:1.5rem; margin-top:0;">${(s.blocks || []).length} exercices</p>
                     ${assignedHtml}
                     ${shareBtn}
-                    <button class="btn-primary" style="width:100%; margin-top:auto;" onclick="openAssignModal('${escapeHtml(s.id)}')">👥 Attribuer</button>
+                    <button class="btn-primary" style="width:100%; margin-top:auto;" onclick="openAssignModal('${escapeHtml(s.id)}')">Attribuer</button>
                 </div>`;
     }).join('');
 }
@@ -2458,8 +2830,10 @@ async function saveAssignments() {
         batch.update(db.collection('sessions').doc(sessionToAssignId), {
             assignedAthleteIds: firebase.firestore.FieldValue.arrayUnion(...selectedIds)
         });
+        const createdAssignmentIds = [];
         selectedIds.forEach(id => {
             const assRef = db.collection('assignments').doc();
+            createdAssignmentIds.push(assRef.id);
             batch.set(assRef, {
                 clubId: currentUser.clubId,
                 sessionId: sessionToAssignId,
@@ -2479,6 +2853,7 @@ async function saveAssignments() {
         });
         await batch.commit();
         closeModal('modal-assign-session');
+        notifyAssignedAthletes(createdAssignmentIds); // en arrière-plan : n'empêche jamais l'attribution
     } catch(error) {
         console.error("Erreur d'attribution de la séance:", error);
         alert("Impossible d'attribuer la séance : " + error.message);
@@ -2684,6 +3059,9 @@ function renderManageGroupsList() {
     const groups = (currentUser.profile.groups || []).filter(g => !g.clubId || g.clubId === currentUser.clubId);
     document.getElementById('existing-groups-list').innerHTML = groups.map(g => `
         <div class="existing-group-item ${g.id === editingGroupId ? 'active' : ''}">
+            ${g.avatar
+                ? `<img class="existing-group-avatar" src="${escapeHtml(g.avatar)}" alt="">`
+                : '<span class="existing-group-avatar existing-group-avatar-placeholder" aria-hidden="true">👥</span>'}
             <div class="existing-group-info"><strong>${escapeHtml(g.name)}</strong><span>${(g.athletes || []).length} membres${g.notify ? ' · 🔔 Alertes' : ''}</span></div>
             <div class="existing-group-actions">
                 <button class="btn-icon" title="Modifier ${escapeHtml(g.name)}" aria-label="Modifier ${escapeHtml(g.name)}" onclick="editGroup('${escapeHtml(g.id)}')">✏️</button>
@@ -2742,7 +3120,9 @@ function renderCoachAthletes() {
     if(currentClubGroups.length > 0) {
         currentClubGroups.forEach(g => {
             html += `<div class="card interactive coach-group-card" onclick="showAthletesGrid('${escapeHtml(g.id)}')">
-                        <div class="coach-group-icon" aria-hidden="true">👥</div>
+                        ${g.avatar
+                            ? `<img class="coach-group-avatar" src="${escapeHtml(g.avatar)}" alt="">`
+                            : '<div class="coach-group-icon" aria-hidden="true">👥</div>'}
                         <div class="card-title" style="font-size:1.3rem;">${escapeHtml(g.name)}</div>
                         <div style="font-size:0.9rem; color:var(--text-muted); font-weight:600;">${(g.athletes || []).length} membres</div>
                      </div>`;
@@ -2784,10 +3164,23 @@ function showAthletesGrid(groupId) {
     document.getElementById('coach-athletes-grid').innerHTML = targetAthletes.map(ath => {
         const pending = clubAssignments.filter(a => a.athleteId === ath.id && !a.isDone).length;
         let badge = pending > 0 ? `<span class="status-badge status-done">${pending} attente</span>` : `<span class="status-badge status-alert">0 séance</span>`;
+        // Séances en attente / jours d'entraînement annoncés à venir
+        const plannedDays = countUpcomingTrainingDays(ath);
+        const coverageOk = pending >= plannedDays;
+        badge += ` <span class="status-badge training-coverage ${coverageOk ? 'coverage-ok' : 'coverage-low'}" title="${pending} séance${pending > 1 ? 's' : ''} en attente pour ${plannedDays} jour${plannedDays > 1 ? 's' : ''} d'entraînement à venir">${pending}/${plannedDays}</span>`;
         let avatarHtml = `<div style="font-size:2rem; margin-bottom:0.5rem; width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:var(--bg-color); border-radius:50%;">👤</div>`;
         if(ath.avatar) avatarHtml = `<img src="${escapeHtml(ath.avatar)}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; margin-bottom:0.5rem;">`;
         return `<div class="card interactive" style="align-items:center; text-align:center;" onclick="openAthleteProfileCoach('${escapeHtml(ath.id)}')">${avatarHtml}<div class="card-title">${escapeHtml(ath.username)} <span style="font-size:0.8rem; opacity:0.7;">(${escapeHtml(getRoleLabel(getClubRole(ath, currentUser.clubId)))})</span></div><div>${badge}</div></div>`;
     }).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center;'>Aucun membre dans cette liste.</p>";
+}
+
+// Nombre de jours marqués « Entraînement » dans le calendrier du membre, à partir d'aujourd'hui (sans limite).
+function countUpcomingTrainingDays(member) {
+    const calendar = (member && member.profile && member.profile.calendar) || {};
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    // Les clés sont au format AAAA-MM-JJ : la comparaison de chaînes suit l'ordre chronologique
+    return Object.entries(calendar).filter(([key, day]) => key >= todayKey && day && day.active).length;
 }
 
 function backToGroupsView() { renderCoachAthletes(); }
@@ -2963,23 +3356,66 @@ async function viewSessionReadonly(assId) {
     document.getElementById('ro-val-plaisir').textContent = a.plaisir || '-';
     document.getElementById('ro-val-diff').textContent = a.difficulte || '-';
     document.getElementById('ro-val-fatigue').textContent = a.fatigue || '-';
-    document.getElementById('ro-val-note').textContent = a.annotation || 'Aucune note ou lien renseigné.';
+    document.getElementById('ro-val-note').textContent = a.annotation || 'Aucune note renseignée.';
     openModal('modal-view-session');
 }
 
 // --- ATHLETE : SESSIONS & EXECUTION ---
 
+// Couleur unie qui glisse du vert (effort faible) au rouge (effort maximal).
+function getRPEColor(val) {
+    const v = Math.min(10, Math.max(1, parseInt(val, 10) || 1));
+    const hue = Math.round(120 * (10 - v) / 9); // 1 → 120 (vert), 10 → 0 (rouge)
+    return `hsl(${hue}, 72%, 42%)`;
+}
+
 function getRPEInfo(val) {
     const v = parseInt(val);
-    if (v <= 3) return { text: `${v}/10 - Très Facile`, color: '#10B981' };
-    if (v <= 5) return { text: `${v}/10 - Modéré`, color: '#3B82F6' };
-    if (v <= 7) return { text: `${v}/10 - Difficile`, color: '#F59E0B' };
-    if (v <= 9) return { text: `${v}/10 - Très Dur (Rési)`, color: '#EF4135' };
-    return { text: '10/10 - Effort Maximal !', color: '#991B1B' };
+    const color = getRPEColor(v);
+    // Libellés courts : l'étiquette a une largeur fixe pour que la carte ne change pas de taille.
+    if (v <= 3) return { text: `${v}/10 · Très facile`, color };
+    if (v <= 5) return { text: `${v}/10 · Modéré`, color };
+    if (v <= 7) return { text: `${v}/10 · Difficile`, color };
+    if (v <= 9) return { text: `${v}/10 · Très dur`, color };
+    return { text: '10/10 · Maximal', color };
+}
+
+// Curseurs du bilan : Difficulté/Fatigue vert → rouge ; Plaisir inversé (10 = vert).
+function updateReviewSlider(input, valueId) {
+    if(!input) return;
+    const value = parseInt(input.value, 10) || 5;
+    const color = getRPEColor(input.dataset.scale === 'positive' ? 11 - value : value);
+    input.style.setProperty('--rpe-color', color);
+    const valueEl = document.getElementById(valueId);
+    if(valueEl) {
+        valueEl.textContent = value;
+        if(valueEl.parentElement) valueEl.parentElement.style.backgroundColor = color;
+    }
+}
+
+// Affiche/masque le chronomètre (placé dans l'en-tête collant de la séance). Sans argument : bascule.
+function toggleChrono(show) {
+    const container = document.getElementById('chrono-container');
+    const button = document.getElementById('btn-show-chrono');
+    if(!container) return;
+    const visible = typeof show === 'boolean' ? show : container.style.display !== 'block';
+    container.style.display = visible ? 'block' : 'none';
+    if(button) {
+        button.setAttribute('aria-label', visible ? 'Masquer le chronomètre' : 'Afficher le chronomètre');
+        button.setAttribute('aria-expanded', String(visible));
+        button.classList.toggle('active', visible);
+    }
+}
+
+function setChronoAvailable(available) {
+    const button = document.getElementById('btn-show-chrono');
+    if(button) button.style.display = available ? '' : 'none';
+    toggleChrono(false);
 }
 
 function updateRPEBadgeUI(inputEl) {
     const info = getRPEInfo(inputEl.value);
+    inputEl.style.setProperty('--rpe-color', info.color);
     const badge = inputEl.previousElementSibling.querySelector('.rpe-badge');
     if (badge) {
         badge.textContent = info.text;
@@ -3001,7 +3437,7 @@ function renderAthleteSessions() {
             if(c) assignerStr = `<span style="font-size:0.75rem; background:#F1F5F9; color:var(--text-muted); padding:2px 6px; border-radius:4px; margin-left:8px;">Attribué par ${escapeHtml(c.username)}</span>`;
         }
         const deleteTitle = a.isDone ? "Supprimer de l'historique" : "Supprimer de mes séances";
-        return `<div class="card interactive" onclick="openSessionAthlete('${escapeHtml(a.id)}')"><div class="card-header" style="align-items:center;"><span class="card-category">Entraînement</span><div style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">${a.isDone ? '<span class="status-badge status-done">Fait ✓</span>' : ''}<button class="btn-icon" style="color:var(--danger); padding:2px;" title="${deleteTitle}" onclick="event.stopPropagation(); deleteAssignment('${escapeHtml(a.id)}')">🗑️</button></div></div><div class="card-title" style="font-size:1.25rem;">${escapeHtml(s.name)}</div><p style="font-size:0.95rem; color:var(--text-muted); margin:0;">🧗 ${blockCount} exercices ${assignerStr}</p></div>`;
+        return `<div class="card interactive" onclick="openSessionAthlete('${escapeHtml(a.id)}')"><div class="card-header" style="align-items:center;"><span class="card-category">Entraînement</span><div style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">${a.isDone ? '<span class="status-badge status-done">Fait ✓</span>' : ''}<button class="btn-icon" style="color:var(--danger); padding:2px;" title="${deleteTitle}" onclick="event.stopPropagation(); deleteAssignment('${escapeHtml(a.id)}')">🗑️</button></div></div><div class="card-title" style="font-size:1.25rem;">${escapeHtml(s.name)}</div><p style="font-size:0.95rem; color:var(--text-muted); margin:0;">${blockCount} exercices ${assignerStr}</p></div>`;
     };
     
     document.getElementById('classic-sessions-grid').innerHTML = todo.map(renderCard).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center; padding:3rem;'>Aucune séance en attente.</p>";
@@ -3051,7 +3487,7 @@ function renderAthleteClubSessions() {
         return `<article class="card">
                     <div class="card-header"><span class="card-category">Séance partagée</span></div>
                     <div class="card-title">${escapeHtml(session.name || 'Séance sans titre')}</div>
-                    <p class="athlete-club-session-meta">🧗 ${blockCount} exercice${blockCount > 1 ? 's' : ''}</p>
+                    <p class="athlete-club-session-meta">${blockCount} exercice${blockCount > 1 ? 's' : ''}</p>
                     <button class="btn-outline" type="button" onclick="openAthleteClubSession('${escapeHtml(session.id)}')">Voir le détail</button>
                 </article>`;
     }).join('') || `<p class="athlete-club-empty">${athleteClubSessionSearch ? 'Aucune séance ne correspond à cette recherche.' : 'Aucune séance n’a été partagée dans votre club pour le moment.'}</p>`;
@@ -3153,15 +3589,15 @@ function openSessionAthlete(assId) {
     document.getElementById('view-session-coach-readonly').style.display = 'none';
 
     document.getElementById('session-annotation').value = a.annotation || '';
-    document.getElementById('session-plaisir').value = a.plaisir || 5; 
-    document.getElementById('val-plaisir').textContent = a.plaisir || 5;
-    document.getElementById('session-difficulte').value = a.difficulte || 5; 
-    document.getElementById('val-diff').textContent = a.difficulte || 5;
-    document.getElementById('session-fatigue').value = a.fatigue || 5; 
-    document.getElementById('val-fatigue').textContent = a.fatigue || 5;
-    
-    resetTimer(); 
-    document.getElementById('chrono-container').style.display = 'none';
+    [['session-plaisir', 'val-plaisir', a.plaisir], ['session-difficulte', 'val-diff', a.difficulte], ['session-fatigue', 'val-fatigue', a.fatigue]]
+        .forEach(([inputId, valueId, value]) => {
+            const input = document.getElementById(inputId);
+            input.value = value || 5;
+            updateReviewSlider(input, valueId);
+        });
+
+    resetTimer();
+    setChronoAvailable(true);
 
     document.getElementById('view-session-content-athlete').innerHTML = sessionBlocks.map((b, i) => {
         if (!b) return '';
@@ -3174,10 +3610,10 @@ function openSessionAthlete(assId) {
             rpeHtml = `
             <div class="rpe-container">
                 <div class="rpe-header">
-                    <span class="rpe-title">Ressenti d'effort (RPE) :</span>
+                    <span class="rpe-title">Ressenti d'effort</span>
                     <span class="rpe-badge" style="background-color: ${rpeInfo.color};">${rpeInfo.text}</span>
                 </div>
-                <input type="range" class="block-rpe-slider rpe-slider-custom" data-blockid="${escapeHtml(b.id)}" min="1" max="10" value="${blockRpeVal}" oninput="updateRPEBadgeUI(this)">
+                <input type="range" class="block-rpe-slider rpe-slider-custom" data-blockid="${escapeHtml(b.id)}" min="1" max="10" value="${blockRpeVal}" style="--rpe-color: ${rpeInfo.color};" oninput="updateRPEBadgeUI(this)">
                 <div class="rpe-scale-labels">
                     <span>1 - Repos</span>
                     <span>5 - Moyen</span>
@@ -3259,15 +3695,217 @@ document.getElementById('btn-validate-session').onclick = async function() {
     }
 };
 
+// --- NOTIFICATIONS PUSH ---
+const PUSH_SESSIONS_TAG = 'sessions-assigned';
+
+function isPushSupported() {
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+function isPushConfigured() {
+    return Boolean(PUSH_CONFIG.workerUrl && PUSH_CONFIG.vapidPublicKey) && isPushSupported();
+}
+
+function getPushOwner() {
+    // L'appareil appartient au compte réellement connecté (un parent qui consulte le compte d'un enfant reste le parent)
+    return originalParentUser || currentUser;
+}
+
+function base64UrlToUint8Array(value) {
+    let base64 = String(value).replace(/-/g, '+').replace(/_/g, '/');
+    while(base64.length % 4) base64 += '=';
+    return Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+}
+
+async function getPushDeviceKey(endpoint) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint));
+    return 'd' + [...new Uint8Array(digest)].slice(0, 12).map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function savePushSubscription(subscription) {
+    const owner = getPushOwner();
+    if(!subscription || !owner || !auth.currentUser || auth.currentUser.uid !== owner.id) return;
+    const data = subscription.toJSON();
+    if(!data.endpoint || !data.keys || !data.keys.p256dh || !data.keys.auth) return;
+    const deviceKey = await getPushDeviceKey(data.endpoint);
+    const ref = db.collection('pushSubscriptions').doc(owner.id);
+    const devices = {
+        [deviceKey]: { endpoint: data.endpoint, p256dh: data.keys.p256dh, auth: data.keys.auth, updatedAt: Date.now() }
+    };
+    // Garde au plus 6 appareils : les plus anciens (souvent des navigateurs plus utilisés) sont retirés
+    const snapshot = await ref.get();
+    const existing = (snapshot.exists && snapshot.data().devices) || {};
+    Object.entries(existing)
+        .filter(([key]) => key !== deviceKey)
+        .sort(([, a], [, b]) => (b.updatedAt || 0) - (a.updatedAt || 0))
+        .slice(5)
+        .forEach(([key]) => { devices[key] = firebase.firestore.FieldValue.delete(); });
+    await ref.set({ clubIds: getUserClubIds(owner), devices, updatedAt: Date.now() }, { merge: true });
+}
+
+async function enablePushNotifications() {
+    if(!isPushConfigured()) return alert("Les notifications ne sont pas encore disponibles.");
+    if(isIosDevice() && !isAppInstalled()) {
+        return alert("Sur iPhone, installez d'abord l'application sur l'écran d'accueil (lien juste en dessous), puis activez les notifications depuis l'application installée.");
+    }
+    try {
+        const permission = await Notification.requestPermission();
+        if(permission !== 'granted') {
+            renderPushEntry();
+            return alert("Les notifications sont bloquées. Vous pouvez les autoriser dans les réglages de votre navigateur ou de votre téléphone.");
+        }
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription() ||
+            await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: base64UrlToUint8Array(PUSH_CONFIG.vapidPublicKey)
+            });
+        await savePushSubscription(subscription);
+        renderPushEntry();
+    } catch(error) {
+        console.error("Erreur d'activation des notifications :", error);
+        alert("Impossible d'activer les notifications : " + error.message);
+    }
+}
+
+async function disablePushNotifications() {
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        const owner = getPushOwner();
+        if(subscription) {
+            const deviceKey = await getPushDeviceKey(subscription.endpoint);
+            await subscription.unsubscribe();
+            if(owner && auth.currentUser && auth.currentUser.uid === owner.id) {
+                await db.collection('pushSubscriptions').doc(owner.id).set({
+                    devices: { [deviceKey]: firebase.firestore.FieldValue.delete() },
+                    updatedAt: Date.now()
+                }, { merge: true });
+            }
+        }
+    } catch(error) {
+        console.error("Erreur de désactivation des notifications :", error);
+    }
+    renderPushEntry();
+}
+
+// À chaque ouverture : met à jour l'abonnement de l'appareil et remet le compteur de séances à zéro
+async function refreshPushState() {
+    if(!isPushConfigured()) return;
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        registration.getNotifications({ tag: PUSH_SESSIONS_TAG })
+            .then(list => list.forEach(notification => notification.close()))
+            .catch(() => {});
+        if(Notification.permission !== 'granted') return;
+        const subscription = await registration.pushManager.getSubscription();
+        if(subscription) await savePushSubscription(subscription);
+    } catch(error) {
+        console.warn("Mise à jour de l'abonnement aux notifications impossible :", error);
+    }
+    renderPushEntry();
+}
+
+document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && currentUser) refreshPushState();
+});
+
+async function renderPushEntry() {
+    const entry = document.getElementById('push-entry');
+    const button = document.getElementById('push-toggle');
+    const status = document.getElementById('push-status');
+    if(!entry || !button || !status) return;
+    if(!isPushConfigured()) { entry.style.display = 'none'; return; }
+    entry.style.display = '';
+
+    let subscribed = false;
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        subscribed = Notification.permission === 'granted' && Boolean(await registration.pushManager.getSubscription());
+    } catch(error) {
+        subscribed = false;
+    }
+    if(Notification.permission === 'denied') {
+        button.style.display = 'none';
+        status.textContent = "Notifications bloquées dans les réglages de cet appareil.";
+    } else {
+        button.style.display = '';
+        button.textContent = subscribed ? 'Désactiver les notifications' : 'Activer les notifications';
+        button.onclick = subscribed ? disablePushNotifications : enablePushNotifications;
+        status.textContent = subscribed ? 'Notifications activées sur cet appareil.' : '';
+    }
+}
+
+// Appelé après une attribution : le Worker vérifie les attributions puis notifie les athlètes
+async function notifyAssignedAthletes(assignmentIds) {
+    if(!PUSH_CONFIG.workerUrl || !assignmentIds || assignmentIds.length === 0 || !auth.currentUser) return;
+    try {
+        const token = await auth.currentUser.getIdToken();
+        const response = await fetch(PUSH_CONFIG.workerUrl.replace(/\/+$/, '') + '/notify-assignments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ assignmentIds })
+        });
+        if(!response.ok) console.warn("Notification non envoyée :", response.status, await response.text());
+    } catch(error) {
+        console.warn("Notification non envoyée :", error);
+    }
+}
+
+// --- INSTALLATION DE L'APPLICATION (PWA) ---
+// Chrome / Edge / Android proposent une installation programmable ; iPhone/iPad passent par le menu Partager de Safari.
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault(); // pas de bandeau automatique : l'installation se fait depuis le profil
+    deferredInstallPrompt = event;
+    renderInstallAppEntry();
+});
+
+window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    renderInstallAppEntry();
+});
+
+function isAppInstalled() {
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function isIosDevice() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function renderInstallAppEntry() {
+    const entry = document.getElementById('install-app-entry');
+    if(!entry) return;
+    // Visible seulement si l'installation est possible et pas déjà faite
+    entry.style.display = !isAppInstalled() && (deferredInstallPrompt || isIosDevice()) ? '' : 'none';
+}
+
+async function installApp() {
+    const help = document.getElementById('install-app-help');
+    if(deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice.catch(() => null);
+        deferredInstallPrompt = null;
+        renderInstallAppEntry();
+        return;
+    }
+    if(help) {
+        help.textContent = isIosDevice()
+            ? "Dans Safari, touchez le bouton Partager (carré avec une flèche), puis « Sur l'écran d'accueil »."
+            : "Ouvrez le menu de votre navigateur, puis choisissez « Installer l'application ».";
+        help.hidden = false;
+    }
+}
+
 // --- ATHLETE PROFIL & AVATAR ---
 function renderAthleteProfile() {
     document.getElementById('profile-display-name').textContent = currentUser.username;
     document.getElementById('profile-objectives').value = currentUser.profile.objectives || '';
-    const adminEntry = document.getElementById('profile-admin-entry');
-    if(adminEntry) {
-        adminEntry.style.display = isPlatformAdmin() && !originalParentUser &&
-            auth.currentUser && auth.currentUser.uid === currentUser.id ? 'inline-block' : 'none';
-    }
+    renderInstallAppEntry();
+    renderPushEntry();
     
     const pre = document.getElementById('profile-avatar-preview');
     const pla = document.getElementById('profile-avatar-placeholder');
@@ -3643,19 +4281,55 @@ function renderCalendar(containerId) {
 
     let html = `<div class="calendar-header"><button class="btn-icon" style="background:var(--bg-color); border:1px solid var(--border-color);" onclick="changeMonth(-1, '${containerId}')">&lt;</button><h3 style="margin:0;">${months[currentMonth]} ${currentYear}</h3><button class="btn-icon" style="background:var(--bg-color); border:1px solid var(--border-color);" onclick="changeMonth(1, '${containerId}')">&gt;</button></div><div class="calendar-grid">` + ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(d => `<div class="calendar-day-name">${d}</div>`).join('');
     
+    const weekdays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    let agendaHtml = '';
     for(let i=0; i<start; i++) html += `<div></div>`;
     for(let d=1; d<=days; d++) {
         const data = cal[dStr(d)]; let cls = "calendar-day";
         if(isCurr && today.getDate() === d) cls += " today";
         if(data && data.active) cls += " active-day";
-        let sHtml = '';
+        let sessionName = '';
+        let sessionDone = false;
         if(data && data.assignmentId) {
             const assign = clubAssignments.find(a => a.id === data.assignmentId);
-            if(assign) { const sess = clubSessions.find(s => s.id === assign.sessionId); if(sess) sHtml = `<div class="cal-session-indicator">${escapeHtml(sess.name)}</div>`; }
+            if(assign) {
+                const sess = getAssignmentSession(assign);
+                if(sess) sessionName = sess.name || '';
+                sessionDone = Boolean(assign.isDone);
+            }
         }
-        html += `<div class="${cls}" onclick="openCalNote('${dStr(d)}')"><span class="day-number">${d}</span>${sHtml}${data?.note ? `<div class="cal-note-indicator">${escapeHtml(data.note)}</div>` : ''}</div>`;
+        if(sessionName) cls += " has-session";
+        if(sessionName && sessionDone) cls += " session-done";
+        if(data && data.note) cls += " has-note";
+        const safeAssignmentId = sessionName ? escapeHtml(data.assignmentId) : '';
+        // Clic sur l'étiquette de séance : ouvre directement la séance liée (sans ouvrir la note du jour)
+        const sHtml = sessionName
+            ? `<button type="button" class="cal-session-indicator" title="Ouvrir la séance « ${escapeHtml(sessionName)} »" onclick="event.stopPropagation(); openCalendarLinkedSession('${safeAssignmentId}')">${escapeHtml(sessionName)}</button>`
+            : '';
+        html += `<div class="${cls}" onclick="openCalNote('${dStr(d)}')"><span class="day-number">${d}</span>${sHtml}${data?.note ? `<div class="cal-note-indicator">${escapeHtml(data.note)}</div>` : ''}<span class="cal-dots" aria-hidden="true"></span></div>`;
+
+        // Liste du mois (affichée sur téléphone, où les cases sont trop étroites pour le texte)
+        if(data && (data.active || sessionName || data.note)) {
+            const weekday = weekdays[new Date(currentYear, currentMonth, d).getDay()];
+            // Jour avec séance liée : on va directement à la séance. Sinon : fenêtre du jour.
+            // (La note d'un jour avec séance reste modifiable en touchant la case dans le calendrier.)
+            const agendaAction = sessionName
+                ? `openCalendarLinkedSession('${safeAssignmentId}')`
+                : `openCalNote('${dStr(d)}')`;
+            agendaHtml += `<button type="button" class="calendar-agenda-item${data.active ? ' active-day' : ''}${sessionName ? ' has-session' : ''}${sessionName && sessionDone ? ' session-done' : ''}" onclick="${agendaAction}">
+                <span class="calendar-agenda-date"><small>${weekday}</small><strong>${d}</strong></span>
+                <span class="calendar-agenda-body">
+                    <span class="calendar-agenda-status">${data.active ? 'Entraînement' : 'Repos'}${sessionName && sessionDone ? ' · Réalisée ✓' : ''}</span>
+                    ${sessionName ? `<span class="calendar-agenda-session">${escapeHtml(sessionName)}</span>` : ''}
+                    ${data.note ? `<span class="calendar-agenda-note">${escapeHtml(data.note)}</span>` : ''}
+                </span>
+                ${sessionName ? '<span class="calendar-agenda-chevron" aria-hidden="true">›</span>' : ''}
+            </button>`;
+        }
     }
-    document.getElementById(containerId).innerHTML = html + `</div>`;
+    html += `</div>`;
+    html += `<div class="calendar-agenda">${agendaHtml || '<p class="calendar-agenda-empty">Rien de prévu ce mois-ci. Touchez un jour pour ajouter un entraînement ou une note.</p>'}</div>`;
+    document.getElementById(containerId).innerHTML = html;
 }
 function changeMonth(delta, cid) { currentMonth += delta; if(currentMonth < 0) { currentMonth = 11; currentYear--; } if(currentMonth > 11) { currentMonth = 0; currentYear++; } renderCalendar(cid); }
 
@@ -3669,9 +4343,27 @@ function openCalNote(dateStr) {
     userAssignments.forEach(a => {
         if (a.isDone && a.id !== data.assignmentId) return; 
         const s = getAssignmentSession(a);
-        if(s) select.innerHTML += `<option value="${escapeHtml(a.id)}" ${a.id === data.assignmentId ? 'selected' : ''}>${a.isDone?'[Validée] ':''}${escapeHtml(s.name)}</option>`; 
+        if(s) select.innerHTML += `<option value="${escapeHtml(a.id)}" ${a.id === data.assignmentId ? 'selected' : ''}>${a.isDone?'[Validée] ':''}${escapeHtml(s.name)}</option>`;
     });
+    updateCalNoteSessionButton();
     openModal('modal-calendar-note');
+}
+
+// Bouton « Voir la séance » de la fenêtre du jour : visible dès qu'une séance est choisie
+function updateCalNoteSessionButton() {
+    const select = document.getElementById('cal-note-session');
+    const button = document.getElementById('cal-note-open-session');
+    if(select && button) button.style.display = select.value ? '' : 'none';
+}
+
+function openCalendarLinkedSession(assignmentId) {
+    const id = assignmentId || (document.getElementById('cal-note-session') || {}).value;
+    const assignment = clubAssignments.find(item => item.id === id);
+    if(!assignment) return alert("Cette séance n'est plus disponible.");
+    closeModal('modal-calendar-note');
+    // L'athlète ouvre sa séance à faire ; un coach (ou un parent) la consulte en lecture seule
+    if(assignment.athleteId === currentUser.id) openSessionAthlete(assignment.id);
+    else viewSessionReadonly(assignment.id);
 }
 async function saveCalendarNote() {
     const u = clubMembers.find(x => x.id === selectedUserIdForCalendar);
@@ -3703,6 +4395,9 @@ function updateTimerDisplay() {
     const phaseLabel = document.getElementById('timer-phase');
     if(timer) timer.dataset.phase = isWorkPhase ? 'work' : 'rest';
     if(phaseLabel) phaseLabel.textContent = isWorkPhase ? 'Travail' : 'Repos';
+    const roundLabel = document.getElementById('timer-round');
+    const totalRounds = parseInt(document.getElementById('timer-rounds').value) || 5;
+    if(roundLabel) roundLabel.textContent = `Série ${Math.min(currentRound, totalRounds)}/${totalRounds}`;
 }
 function startTimer() {
     if(timerInterval) return; 
@@ -3725,7 +4420,9 @@ function resetTimer() {
     const timer = document.getElementById('chrono-container');
     const phaseLabel = document.getElementById('timer-phase');
     if(timer) timer.dataset.phase = 'work';
-    if(phaseLabel) phaseLabel.textContent = 'Prêt à travailler';
+    if(phaseLabel) phaseLabel.textContent = 'Prêt';
+    const roundLabel = document.getElementById('timer-round');
+    if(roundLabel) roundLabel.textContent = '';
 }
 
 // --- MESSAGERIE CHAT ---

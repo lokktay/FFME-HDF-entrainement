@@ -390,6 +390,12 @@ nav button {
     white-space: nowrap; 
 }
 
+/* Icônes et libellés courts : réservés à la barre d'onglets mobile */
+nav .nav-icon,
+nav .nav-label-short {
+    display: none;
+}
+
 nav button:hover {
     color: var(--primary);
     background: var(--primary-subtle);
@@ -705,6 +711,39 @@ textarea.form-control {
     gap: 1.5rem; 
 }
 
+.global-library-author {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    margin: 0 0 1rem;
+}
+
+.global-library-blocks {
+    margin: 0 0 1rem;
+    padding-left: 1.25rem;
+    font-size: 0.9rem;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.global-library-blocks li {
+    margin-bottom: 0.6rem;
+}
+
+.global-library-block-cat {
+    font-size: 0.75rem;
+    color: var(--ffme-blue-dark);
+    background: #EFF6FF;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    margin-left: 0.25rem;
+}
+
+.global-library-block-desc {
+    white-space: pre-wrap;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+}
+
 .card { 
     background: var(--surface); 
     padding: 1.5rem; 
@@ -843,9 +882,25 @@ textarea.form-control {
     box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
 }
 
-.status-alert { 
-    background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); 
+.status-alert {
+    background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
     box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+}
+
+/* Séances en attente / jours d'entraînement prévus */
+.training-coverage {
+    cursor: help;
+    font-variant-numeric: tabular-nums;
+}
+
+.training-coverage.coverage-ok {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25);
+}
+
+.training-coverage.coverage-low {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    box-shadow: 0 2px 6px rgba(217, 119, 6, 0.25);
 }
 
 /* === TABS & FILTERS === */
@@ -1058,8 +1113,30 @@ textarea.form-control {
 
 .app-dialog-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     gap: 0.75rem;
+}
+
+.app-dialog-actions-choice {
+    flex-direction: column;
+    align-items: center;
+}
+
+.app-dialog-choices {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.app-dialog-choices button {
+    flex: 1;
+}
+
+#app-dialog-input {
+    width: 100%;
+    margin-bottom: 1.25rem;
 }
 
 .app-dialog-actions button {
@@ -1591,14 +1668,27 @@ textarea.form-control {
     font-weight: 800;
 }
 
-.calendar-day.active-day .cal-session-indicator { 
+.calendar-day.active-day .cal-session-indicator {
     background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
     box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25);
 }
 
-.cal-session-indicator { 
-    font-size: 0.7rem; 
-    font-weight: 700; 
+/* Séance réalisée : vert, quel que soit le statut du jour */
+.calendar-day.session-done .cal-session-indicator,
+.calendar-day.active-day.session-done .cal-session-indicator {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25);
+}
+
+.cal-session-indicator {
+    display: block;
+    border: none;
+    font-family: inherit;
+    text-align: center;
+    cursor: pointer;
+    transition: filter var(--transition-fast), transform var(--transition-fast);
+    font-size: 0.7rem;
+    font-weight: 700;
     color: white; 
     background: var(--gradient-button); 
     margin-top: 0.35rem; 
@@ -1612,7 +1702,22 @@ textarea.form-control {
     box-shadow: var(--shadow-xs); 
 }
 
-.cal-note-indicator { 
+.cal-session-indicator:hover {
+    filter: brightness(1.15);
+    text-decoration: underline;
+}
+
+.cal-session-indicator:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.cal-note-open-session {
+    width: 100%;
+    margin-top: 0.5rem;
+}
+
+.cal-note-indicator {
     font-size: 0.7rem; 
     color: var(--text-dark); 
     margin-top: 0.25rem; 
@@ -2216,6 +2321,16 @@ textarea.form-control {
     font-size: 2.5rem;
 }
 
+.coach-group-avatar {
+    width: 76px;
+    height: 76px;
+    margin-bottom: 0.5rem;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary-border);
+    box-shadow: var(--shadow-sm);
+}
+
 .group-view-heading {
     display: flex;
     align-items: center;
@@ -2341,9 +2456,27 @@ textarea.form-control {
 
 .existing-group-info {
     display: flex;
+    flex: 1;
     flex-direction: column;
     min-width: 0;
     gap: 0.2rem;
+}
+
+.existing-group-avatar {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--border-color);
+}
+
+.existing-group-avatar-placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-subtle);
+    font-size: 1.1rem;
 }
 
 .existing-group-info strong {
@@ -2438,16 +2571,18 @@ textarea.form-control {
     min-height: 280px;
 }
 
-.timer-panel { 
+/* Chronomètre compact (2 lignes) dans l'en-tête collant de la séance */
+.timer-panel {
     --timer-phase-color: #B91C1C;
-    background: var(--timer-phase-color); 
-    color: white; 
-    padding: 1rem 1.25rem; 
-    border-radius: var(--radius-lg); 
-    text-align: center; 
-    margin-bottom: 1rem; 
+    flex: 1 0 100%;
+    order: 3;
+    background: var(--timer-phase-color);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-md);
+    margin-top: 0.5rem;
     display: none;
-    box-shadow: var(--shadow-lg);
+    box-shadow: var(--shadow-sm);
     transition: background-color var(--transition-fast);
 }
 
@@ -2455,41 +2590,148 @@ textarea.form-control {
     --timer-phase-color: #15803D;
 }
 
-.timer-phase {
-    font-size: 0.85rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+.timer-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
 }
 
-.timer-display { 
-    font-size: 3.25rem; 
-    font-weight: 800; 
-    margin: 0.5rem 0 0.75rem; 
-    font-variant-numeric: tabular-nums; 
-    line-height: 1; 
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    letter-spacing: -0.04em;
+.timer-readout {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.timer-phase {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.9;
+}
+
+.timer-display {
+    font-size: 1.9rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+
+.timer-round {
+    font-size: 0.72rem;
+    font-weight: 700;
+    opacity: 0.85;
+    white-space: nowrap;
+}
+
+.timer-controls {
+    display: flex;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+}
+
+.timer-btn {
+    min-height: 32px;
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: transparent;
+    color: white;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.timer-btn-start {
+    background: white;
+    border-color: white;
+    color: var(--timer-phase-color);
 }
 
 .timer-inputs {
     display: flex;
-    justify-content: center;
-    gap: 1rem;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    margin-top: 0.4rem;
 }
 
 .timer-inputs label {
-    font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
-.timer-inputs input { 
-    width: 68px; 
-    text-align: center; 
-    padding: 0.45rem; 
-    border-radius: var(--radius-md); 
-    border: none; 
-    font-weight: 700; 
-    font-size: 0.95rem; 
+.timer-inputs input {
+    width: 44px;
+    min-height: 0;
+    text-align: center;
+    padding: 0.15rem 0.2rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+/* En-tête de séance collant : titre + chrono restent visibles au défilement */
+.view-session-header {
+    position: sticky;
+    top: -1rem; /* compense le padding de la fenêtre */
+    z-index: 6;
+    flex-wrap: wrap;
+    box-shadow: var(--shadow-sm);
+}
+
+.view-session-header .view-session-title {
+    flex: 1;
+}
+
+.view-session-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+}
+
+/* Bouton icône du chronomètre (même gabarit que la croix de fermeture) */
+.chrono-toggle {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.chrono-toggle svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.chrono-toggle.active {
+    background: var(--primary-subtle);
+    border-color: var(--primary-border);
+    color: var(--primary);
+}
+
+/* Une seule zone de défilement : la fenêtre entière */
+#view-session-content-athlete {
+    max-height: none !important;
+    overflow: visible !important;
+    padding-right: 0 !important;
 }
 
 .rpe-slider { 
@@ -2540,14 +2782,27 @@ textarea.form-control {
     margin-bottom: 0.75rem; 
 }
 
-.rpe-title { 
-    font-weight: 700; 
+.rpe-title {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 700;
     font-size: 0.92rem; 
     color: var(--text-dark); 
 }
 
-.rpe-badge { 
-    padding: 0.25rem 0.75rem; 
+.rpe-badge {
+    /* Largeur fixe : le texte qui change ne redimensionne jamais la carte */
+    flex: 0 0 auto;
+    width: 10rem;
+    box-sizing: border-box;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0.25rem 0.75rem;
     border-radius: var(--radius-full); 
     font-weight: 800; 
     font-size: 0.82rem; 
@@ -2557,46 +2812,499 @@ textarea.form-control {
 }
 
 /* Sliders de cotation RPE (Échelle Borg) */
-.rpe-slider-custom { 
-    -webkit-appearance: none; 
-    appearance: none; 
-    width: 100%; 
-    height: 10px; 
-    border-radius: var(--radius-full); 
-    background: linear-gradient(to right, #10B981 0%, #F59E0B 50%, #EF4444 100%); 
-    outline: none; 
-    margin: 0.5rem 0; 
-    cursor: pointer; 
+/* Barre d'une seule couleur, définie par la note (--rpe-color : vert → rouge) */
+.rpe-slider-custom {
+    --rpe-color: hsl(60, 72%, 42%);
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--rpe-color);
+    outline: none;
+    margin: 0.5rem 0;
+    cursor: pointer;
+    transition: background-color var(--transition-fast);
 }
 
-.rpe-slider-custom::-webkit-slider-thumb { 
-    -webkit-appearance: none; 
-    appearance: none; 
-    width: 26px; 
-    height: 26px; 
-    border-radius: 50%; 
-    background: #FFFFFF; 
-    border: 3px solid var(--primary); 
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25); 
-    cursor: pointer; 
-    transition: transform 0.1s; 
+.rpe-slider-custom::-moz-range-track {
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--rpe-color);
 }
 
-.rpe-slider-custom::-webkit-slider-thumb:active { 
-    transform: scale(1.18); 
+.rpe-slider-custom::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #FFFFFF;
+    border: 3px solid var(--rpe-color);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.rpe-slider-custom::-webkit-slider-thumb:active {
+    transform: scale(1.15);
 }
 
 .rpe-slider-custom::-moz-range-thumb {
-    width: 26px; 
-    height: 26px; 
-    border-radius: 50%; 
-    background: #FFFFFF; 
-    border: 3px solid var(--primary); 
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25); 
+    width: 22px;
+    height: 22px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: #FFFFFF;
+    border: 3px solid var(--rpe-color);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);
     cursor: pointer;
 }
 
-.rpe-scale-labels { 
+.rpe-slider-custom:focus-visible::-webkit-slider-thumb {
+    outline: 3px solid var(--primary-ring);
+    outline-offset: 2px;
+}
+
+/* Téléphone : bloc de ressenti compact */
+@media (max-width: 640px) {
+    .rpe-container {
+        padding: 0.65rem 0.8rem;
+        margin-top: 0.75rem;
+    }
+    .rpe-header {
+        gap: 0.5rem;
+        margin-bottom: 0.35rem;
+    }
+    .rpe-title {
+        font-size: 0.8rem;
+    }
+    .rpe-badge {
+        width: 8.5rem;
+        padding: 0.15rem 0.4rem;
+        font-size: 0.72rem;
+    }
+    .rpe-slider-custom {
+        height: 6px;
+        margin: 0.35rem 0;
+    }
+    .rpe-slider-custom::-moz-range-track {
+        height: 6px;
+    }
+    .rpe-slider-custom::-webkit-slider-thumb {
+        width: 20px;
+        height: 20px;
+        border-width: 2px;
+    }
+    .rpe-slider-custom::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-width: 2px;
+    }
+    .rpe-scale-labels {
+        font-size: 0.66rem;
+        margin-top: 0;
+    }
+
+    /* Séance : titre compact, une seule zone de défilement, bilan en colonne */
+    .modal-header.view-session-header[style] {
+        padding: 0.8rem 0.6rem 0.5rem 1rem !important;
+        margin-bottom: 0.6rem !important;
+    }
+    .view-session-header .timer-panel {
+        margin-right: 0.4rem;
+    }
+    .timer-controls {
+        gap: 0.3rem;
+    }
+    .timer-btn {
+        min-height: 36px;
+        padding: 0.3rem 0.55rem;
+    }
+    .timer-inputs input {
+        width: 48px;
+        font-size: 16px; /* évite le zoom automatique d'iOS */
+    }
+    .view-session-title {
+        font-size: 1rem;
+    }
+    .modal-header.view-session-header .close-btn,
+    .modal-header.view-session-header .chrono-toggle {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+    }
+    #view-session-content-athlete,
+    #view-session-content-coach {
+        max-height: none !important;
+        overflow: visible !important;
+        padding-right: 0 !important;
+    }
+    .athlete-block-card {
+        padding: 1rem;
+        margin-bottom: 0.9rem;
+    }
+    .session-review {
+        padding: 1rem;
+    }
+    .session-review-metrics {
+        grid-template-columns: 1fr;
+        gap: 0.6rem;
+    }
+    .review-metric {
+        padding: 0.6rem 0.8rem 0.5rem;
+    }
+    .review-metric .review-slider {
+        margin: 0.45rem 0 0.25rem;
+    }
+}
+
+/* === CALENDRIER : liste du mois (téléphone uniquement) === */
+.calendar-agenda,
+.cal-dots {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .calendar-header {
+        margin-bottom: 0.75rem;
+    }
+    .calendar-grid {
+        gap: 4px;
+    }
+    .calendar-day-name {
+        font-size: 0.66rem;
+        letter-spacing: 0;
+        padding-bottom: 0.25rem;
+    }
+    /* Cases compactes : juste le numéro et des points de couleur */
+    .calendar-day {
+        min-height: 0;
+        aspect-ratio: 1;
+        padding: 0;
+        justify-content: center;
+        border-radius: var(--radius-sm);
+    }
+    .calendar-day:hover {
+        transform: none;
+        box-shadow: none;
+    }
+    .calendar-day .day-number {
+        font-size: 0.9rem;
+        line-height: 1;
+    }
+    .calendar-day .cal-session-indicator,
+    .calendar-day .cal-note-indicator {
+        display: none;
+    }
+    .calendar-day .cal-dots {
+        display: flex;
+        gap: 3px;
+        height: 5px;
+        margin-top: 4px;
+    }
+    .calendar-day.has-session .cal-dots::before,
+    .calendar-day.has-note .cal-dots::after {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+    }
+    .calendar-day.has-session .cal-dots::before {
+        background: var(--primary);
+    }
+    .calendar-day.active-day.has-session .cal-dots::before {
+        background: #DC2626;
+    }
+    .calendar-day.has-session.session-done .cal-dots::before {
+        background: #059669;
+    }
+    .calendar-day.has-note .cal-dots::after {
+        background: var(--text-muted);
+    }
+
+    /* Liste lisible des jours du mois qui ont un contenu */
+    .calendar-agenda {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    .calendar-agenda-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 52px;
+        padding: 0.55rem 0.75rem;
+        text-align: left;
+        background: var(--surface);
+        border: 1px solid var(--border-color);
+        border-left: 4px solid var(--border-hover);
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        font: inherit;
+        color: var(--text-dark);
+    }
+    .calendar-agenda-item:active {
+        background: var(--primary-subtle);
+    }
+    .calendar-agenda-body {
+        flex: 1;
+    }
+    /* Petite flèche discrète : indique que le jour mène à sa séance */
+    .calendar-agenda-chevron {
+        flex: 0 0 auto;
+        font-size: 1.4rem;
+        line-height: 1;
+        color: var(--text-light);
+    }
+    .calendar-agenda-item.active-day {
+        border-left-color: #DC2626;
+    }
+    .calendar-agenda-date {
+        flex: 0 0 2.4rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1.1;
+    }
+    .calendar-agenda-date small {
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+    .calendar-agenda-date strong {
+        font-size: 1.1rem;
+    }
+    .calendar-agenda-body {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        gap: 0.1rem;
+    }
+    .calendar-agenda-status {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--text-muted);
+    }
+    .calendar-agenda-item.active-day .calendar-agenda-status {
+        color: #DC2626;
+    }
+    .calendar-agenda-item.session-done {
+        border-left-color: #059669;
+    }
+    .calendar-agenda-item.session-done .calendar-agenda-status {
+        color: #059669;
+    }
+    .calendar-agenda-session {
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: var(--ffme-blue-dark);
+    }
+    .calendar-agenda-note {
+        font-size: 0.85rem;
+        color: var(--text-body);
+        overflow-wrap: anywhere;
+    }
+    .calendar-agenda-empty {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        text-align: center;
+    }
+}
+
+/* === VISUALISATION D'UNE SÉANCE === */
+.view-session-title {
+    margin: 0;
+    min-width: 0;
+    font-size: 1.15rem;
+    line-height: 1.25;
+    color: var(--ffme-blue-dark);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.view-session-header .close-btn {
+    width: 34px;
+    height: 34px;
+}
+
+body.session-view-open .chat-btn-float {
+    display: none !important;
+}
+
+/* Bilan de fin de séance */
+/* Séparateur clair entre les exercices et le bilan */
+.session-review-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1.5rem 0 0.9rem;
+    color: var(--primary);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.session-review-divider::before,
+.session-review-divider::after {
+    content: '';
+    flex: 1;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--primary-border);
+}
+
+/* Le bilan se distingue des cartes d'exercices (blanches) : fond bleuté, bordure accentuée */
+.session-review {
+    background: var(--primary-subtle);
+    border: 2px solid var(--primary-border);
+    border-top: 5px solid var(--primary);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    box-shadow: var(--shadow-lg);
+    scroll-margin-top: 9rem; /* ne pas finir caché sous l'en-tête collant */
+}
+
+.session-review-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.session-review-step {
+    flex: 0 0 auto;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--gradient-button);
+    color: white;
+    font-weight: 900;
+    font-size: 1.05rem;
+    box-shadow: var(--shadow-blue);
+}
+
+.session-review-heading h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--ffme-blue-dark);
+}
+
+.session-review-heading p {
+    margin: 0.15rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-body);
+}
+
+.session-review .review-metric {
+    background: var(--surface);
+    border-color: var(--primary-border);
+}
+
+.session-review .session-review-notes {
+    background: var(--surface);
+}
+
+/* 3 colonnes seulement s'il y a la place (≥ 220 px chacune), sinon les barres s'empilent */
+.session-review-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+
+.review-metric {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.review-metric {
+    background: var(--surface-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 0.9rem 0.6rem;
+}
+
+.review-metric-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.review-metric-top label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+}
+
+.review-metric-value {
+    flex: 0 0 auto;
+    min-width: 3.4rem;
+    text-align: center;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-full);
+    color: white;
+    font-weight: 800;
+    font-size: 0.8rem;
+    background: var(--primary);
+    transition: background-color var(--transition-fast);
+}
+
+.review-metric .review-slider {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0.6rem 0 0.3rem;
+}
+
+.review-metric-scale {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    white-space: nowrap;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.session-review-notes-label {
+    display: block;
+    margin: 1.1rem 0 0.4rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+}
+
+.session-review-notes {
+    min-height: 80px;
+}
+
+.session-review-submit {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 0.95rem;
+    font-size: 1.02rem;
+}
+
+.rpe-scale-labels {
     display: flex; 
     justify-content: space-between; 
     font-size: 0.72rem; 
@@ -2658,13 +3366,10 @@ textarea.form-control {
         bottom: 16px;
     }
     .timer-display {
-        font-size: 2.8rem;
+        font-size: 1.6rem;
     }
-    .timer-panel {
-        padding: 0.85rem;
-    }
-    .timer-inputs {
-        gap: 0.5rem;
+    .timer-round {
+        display: none;
     }
     .assignment-picker-heading {
         align-items: stretch;
@@ -2676,4 +3381,859 @@ textarea.form-control {
     .modal {
         padding: 1.25rem;
     }
+}
+
+/* ====================================================================== */
+/* === TÉLÉPHONE : ergonomie tactile (barre d'onglets, feuilles, cibles) === */
+/* ====================================================================== */
+@media (max-width: 640px) {
+    :root {
+        --mobile-nav-height: 62px;
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    body {
+        -webkit-tap-highlight-color: transparent;
+    }
+    /* Réserve la place de la barre d'onglets pour que le bas des pages reste accessible */
+    #app-content {
+        padding-bottom: calc(var(--mobile-nav-height) + var(--safe-bottom) + 0.5rem);
+    }
+
+    /* --- En-tête compact : titre + compte sur une ligne, déconnexion en icône --- */
+    header {
+        /* backdrop-filter crée un bloc conteneur qui casserait la barre fixe du bas */
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: var(--surface);
+        flex-wrap: nowrap;
+        padding: calc(0.55rem + var(--safe-top)) 3.75rem 0.55rem 1rem;
+        gap: 0.5rem;
+    }
+    .header-left {
+        flex: 1;
+        min-width: 0;
+        gap: 0.6rem;
+    }
+    h1 {
+        font-size: 1.15rem;
+        flex-shrink: 0;
+    }
+    .user-info {
+        min-width: 0;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
+        min-height: 36px;
+    }
+    #header-user-info-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Sur téléphone : pseudo seul, sans le rôle */
+    .header-user-role {
+        display: none;
+    }
+    .account-dropdown {
+        position: fixed;
+        top: calc(3.4rem + var(--safe-top));
+        left: 0.75rem;
+        right: 0.75rem;
+        width: auto;
+    }
+    .account-dropdown button {
+        min-height: 48px;
+        font-size: 0.95rem;
+    }
+
+    /* --- Navigation : barre d'onglets fixe en bas, à portée du pouce --- */
+    nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1500;
+        width: auto;
+        display: flex;
+        justify-content: space-around;
+        align-items: stretch;
+        gap: 0;
+        padding: 0.3rem 0.25rem calc(0.3rem + var(--safe-bottom));
+        background: var(--surface);
+        border-top: 1px solid var(--border-color);
+        box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    nav::-webkit-scrollbar {
+        display: none;
+    }
+    nav button {
+        flex: 1 0 auto;
+        min-width: 58px;
+        min-height: 52px;
+        padding: 0.25rem 0.2rem;
+        border-radius: var(--radius-md);
+        text-align: center;
+        line-height: 1.1;
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: var(--text-muted);
+    }
+    nav button:hover {
+        background: none;
+    }
+    nav .nav-label {
+        display: none;
+    }
+    nav .nav-icon {
+        display: block;
+        width: 46px;
+        margin: 0 auto 0.15rem;
+        padding: 0.25rem 0;
+        border-radius: var(--radius-full);
+        line-height: 0;
+        transition: background var(--transition-fast);
+    }
+    nav .nav-icon svg {
+        width: 22px;
+        height: 22px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    nav .nav-label-short {
+        display: block;
+        white-space: nowrap;
+    }
+    nav button.active {
+        background: none;
+        box-shadow: none;
+        color: var(--primary);
+        font-weight: 800;
+    }
+    nav button.active .nav-icon {
+        background: var(--primary-subtle);
+        box-shadow: inset 0 0 0 1px var(--primary-border);
+    }
+    #btn-logout {
+        position: fixed;
+        top: calc(0.45rem + var(--safe-top));
+        right: 0.75rem;
+        z-index: 101;
+        flex: none;
+        width: 42px;
+        min-width: 42px;
+        height: 42px;
+        min-height: 42px;
+        margin-left: 0 !important;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: var(--surface);
+    }
+    #btn-logout .nav-icon {
+        width: auto;
+        margin: 0;
+        padding: 0;
+    }
+    #btn-logout .nav-icon svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    /* --- Contenu --- */
+    .tab-content {
+        padding: 1.1rem 1rem 1.5rem;
+    }
+    .section-title {
+        font-size: 1.25rem;
+    }
+    .tab-content > .flex-between {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .tab-content > .flex-between > div[style*="display"] {
+        display: flex;
+        width: 100%;
+    }
+    .tab-content > .flex-between > div[style*="display"] > button {
+        flex: 1;
+    }
+    .tab-content > hr {
+        margin: 1.25rem 0;
+    }
+    .grid {
+        gap: 0.9rem;
+    }
+    .card {
+        padding: 1.1rem;
+    }
+
+    /* Onglets internes (Mes Séances / Club / Bibliothèque) : pleine largeur, défilables */
+    .internal-tabs {
+        display: flex;
+        width: 100%;
+        box-sizing: border-box;
+        overflow-x: auto;
+        scrollbar-width: none;
+        margin-bottom: 0;
+    }
+    .internal-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    .internal-tabs button {
+        flex: 1 0 auto;
+        min-height: 42px;
+        padding: 0.5rem 0.85rem;
+        white-space: nowrap;
+    }
+
+    /* Filtres : une seule ligne qui défile au doigt */
+    .filter-tags {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        padding-bottom: 0.25rem;
+    }
+    .filter-tags::-webkit-scrollbar {
+        display: none;
+    }
+    .filter-tag {
+        flex: 0 0 auto;
+        min-height: 36px;
+    }
+
+    /* --- Cibles tactiles (≥ 44 px) et champs à 16 px (évite le zoom iOS) --- */
+    .btn-primary,
+    .btn-outline,
+    .btn-secondary {
+        min-height: 44px;
+    }
+    .btn-icon {
+        min-width: 40px;
+        min-height: 40px;
+    }
+    .form-control,
+    .search-bar,
+    input,
+    select,
+    textarea {
+        font-size: 16px;
+    }
+    .form-control,
+    .search-bar {
+        min-height: 44px;
+    }
+    .search-bar {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* --- Fenêtres : feuilles qui montent du bas, en-tête toujours visible --- */
+    .modal-overlay {
+        align-items: flex-end;
+    }
+    .modal,
+    .modal-large {
+        width: 100%;
+        max-width: none !important;
+        max-height: calc(100vh - var(--safe-top) - 0.75rem);
+        max-height: calc(100dvh - var(--safe-top) - 0.75rem);
+        box-sizing: border-box;
+        padding: 0 1rem calc(1.25rem + var(--safe-bottom));
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+        border-bottom: none;
+        animation: sheetUp 0.22s ease-out;
+        overscroll-behavior: contain;
+    }
+    .modal-header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        margin: 0 -1rem 1rem;
+        padding: 1rem 1rem 0.85rem;
+        background: var(--surface);
+        gap: 0.75rem;
+    }
+    .modal-header::before {
+        /* Poignée visuelle de la feuille */
+        content: '';
+        position: absolute;
+        top: 0.4rem;
+        left: 50%;
+        width: 40px;
+        height: 4px;
+        margin-left: -20px;
+        border-radius: var(--radius-full);
+        background: var(--border-hover);
+    }
+    /* Fenêtres dont le style est écrit en ligne dans le HTML (séance, profil athlète) */
+    .modal[style*="padding"] {
+        padding: 0 1rem calc(1.25rem + var(--safe-bottom)) !important;
+    }
+    .modal-header[style] {
+        margin: 0 -1rem 1rem !important;
+        padding: 1rem 1rem 0.85rem !important;
+        border-radius: 0 !important;
+        border-bottom: 1px solid var(--border-color) !important;
+    }
+    .modal-header h2,
+    .modal-header h3 {
+        font-size: 1.15rem;
+    }
+    .close-btn {
+        flex: 0 0 auto;
+        width: 44px;
+        height: 44px;
+    }
+
+    /* Constructeur de séance : plein écran, une seule zone de défilement */
+    .modal-builder {
+        height: calc(100vh - var(--safe-top));
+        height: calc(100dvh - var(--safe-top));
+        max-height: none;
+        overflow-y: auto;
+        padding: 0 1rem calc(1rem + var(--safe-bottom));
+        border-radius: 0;
+    }
+    .modal-builder .modal-header {
+        margin: 0 -1rem 0.75rem !important;
+    }
+    .builder-container {
+        overflow: visible;
+        flex: none;
+        gap: 1rem;
+        margin-top: 0;
+    }
+    .builder-sidebar,
+    .builder-main {
+        max-height: none;
+        overflow: visible;
+        padding: 1rem;
+    }
+    #builder-blocks-list {
+        max-height: 45vh;
+        padding-bottom: 0.5rem;
+    }
+
+    /* Boîtes de dialogue : boutons confortables */
+    .app-dialog {
+        padding: 1.5rem 1.25rem;
+    }
+    .app-dialog-actions button {
+        min-height: 46px;
+    }
+
+    /* --- Messagerie : bouton au-dessus de la barre, panneau plein écran --- */
+    .chat-btn-float {
+        right: 14px;
+        bottom: calc(var(--mobile-nav-height) + var(--safe-bottom) + 14px);
+        width: 52px;
+        height: 52px;
+        font-size: 1.4rem;
+    }
+    .chat-panel,
+    .chat-panel.fullscreen {
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 0;
+        border: none;
+        z-index: 3000;
+        padding-top: var(--safe-top);
+        padding-bottom: var(--safe-bottom);
+        box-sizing: border-box;
+    }
+    .chat-header-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+    /* Déjà en plein écran sur téléphone */
+    .chat-header-btn[title="Plein écran"] {
+        display: none;
+    }
+    .chat-input input {
+        font-size: 16px;
+    }
+
+    /* --- Connexion --- */
+    #auth-screen {
+        padding: 1rem;
+    }
+    .auth-container {
+        padding: 1.75rem 1.25rem;
+    }
+    .auth-tab {
+        min-height: 44px;
+    }
+}
+
+@keyframes sheetUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Écrans tactiles : pas d'effets de survol qui « collent » après un appui */
+@media (hover: none) {
+    .card.interactive:hover,
+    .user-info:hover,
+    .chat-btn-float:hover,
+    .btn-primary:hover,
+    .btn-outline:hover {
+        transform: none;
+    }
+    .close-btn:hover {
+        transform: none;
+    }
+}
+
+/* === SÉLECTEUR DE CLUB AVEC PHOTOS === */
+.club-picker-native {
+    display: none !important;
+}
+
+/* La flèche du sélecteur natif est remplacée par celle du sélecteur à photos */
+.club-select-wrap::after {
+    display: none;
+}
+
+.club-picker {
+    position: relative;
+    width: 100%;
+}
+
+.club-picker-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.45rem 0.85rem 0.45rem 0.5rem;
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius-md);
+    background: linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%);
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.club-picker-toggle:hover,
+.club-picker-toggle[aria-expanded="true"] {
+    border-color: var(--primary);
+}
+
+.club-picker-toggle:focus-visible {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+.club-picker-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.club-picker-label.is-placeholder {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.club-picker-caret {
+    flex: 0 0 auto;
+    color: var(--primary);
+    font-size: 0.85rem;
+    transition: transform var(--transition-fast);
+}
+
+.club-picker-toggle[aria-expanded="true"] .club-picker-caret {
+    transform: rotate(180deg);
+}
+
+.club-picker-avatar {
+    flex: 0 0 auto;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    object-fit: cover;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-subtle);
+    border: 1px solid var(--primary-border);
+    color: var(--primary);
+    font-weight: 800;
+    font-size: 0.9rem;
+}
+
+.club-picker-avatar-empty {
+    background: var(--surface-subtle);
+    border-style: dashed;
+    border-color: var(--border-hover);
+}
+
+.club-picker-avatar-new {
+    background: var(--gradient-button);
+    border-color: transparent;
+    color: white;
+    font-size: 1.15rem;
+}
+
+.club-picker-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 290px;
+    overflow-y: auto;
+    padding: 0.35rem;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xl);
+    animation: fadeInScale 0.12s ease-out;
+}
+
+.club-picker-list[hidden] {
+    display: none;
+}
+
+.club-picker-option {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.45rem 0.6rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    text-align: left;
+    cursor: pointer;
+}
+
+.club-picker-option span:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.club-picker-option:hover,
+.club-picker-option:focus-visible {
+    outline: none;
+    background: var(--primary-subtle);
+}
+
+.club-picker-option.selected {
+    background: var(--primary-subtle);
+    color: var(--primary);
+}
+
+.club-picker-option.is-create {
+    margin-top: 0.25rem;
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    color: var(--primary-dark);
+}
+
+.club-picker-empty {
+    margin: 0;
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Écran d'inscription : le conteneur masque ce qui dépasse, la liste s'ouvre donc dans le formulaire */
+#auth-screen .club-picker-list {
+    position: static;
+    margin-top: 6px;
+    box-shadow: var(--shadow-md);
+}
+
+/* Lien discret d'installation de l'application, en bas du profil */
+.install-app-entry {
+    margin-top: 2rem;
+    text-align: center;
+}
+
+.install-app-entry .btn-text {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.install-app-help {
+    margin: 0.4rem auto 0;
+    max-width: 420px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* ====================================================================== */
+/* === FINITIONS : cohérence visuelle, boutons alignés, moins de bruit === */
+/* ====================================================================== */
+
+/* --- Boutons : texte toujours centré, même gabarit, pas de « saut » au survol --- */
+.btn-primary,
+.btn-secondary,
+.btn-outline {
+    box-sizing: border-box;
+    min-height: 40px;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.25;
+    font-family: inherit;
+    vertical-align: middle;
+    text-wrap: balance;
+}
+
+.btn-primary:hover,
+.btn-secondary:hover,
+.btn-outline:hover,
+.btn-primary:active,
+.btn-secondary:active {
+    transform: none;
+}
+
+.btn-primary:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-secondary:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-outline:focus-visible,
+.btn-icon:focus-visible {
+    outline: 3px solid var(--primary-ring);
+    outline-offset: 2px;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-outline:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Boutons-icônes (✏️ 🗑️ 📋) : cible carrée régulière, alignés entre eux */
+.btn-icon {
+    box-sizing: border-box;
+    min-width: 34px;
+    min-height: 34px;
+    line-height: 1;
+}
+
+/* --- Cartes : survol discret (pas de soulèvement), contenu bien réparti --- */
+.card.interactive:hover {
+    transform: none;
+    box-shadow: var(--shadow-md);
+}
+
+.card > .btn-primary,
+.card > .btn-outline,
+.card > .btn-secondary {
+    width: 100%;
+}
+
+.card-header {
+    gap: 0.5rem;
+}
+
+/* --- Sections : en-têtes « titre + bouton » alignés proprement --- */
+.profile-section > .flex-between {
+    gap: 0.75rem;
+}
+
+.profile-section > .flex-between > h3 {
+    min-width: 0;
+}
+
+/* Ombres plus légères : moins de relief = moins de bruit visuel */
+.profile-section,
+.profile-header,
+.notifications-panel {
+    box-shadow: var(--shadow-xs);
+}
+
+/* ====================================================================== */
+/* === TÉLÉPHONE : alignement des boutons sur toutes les largeurs ===    */
+/* ====================================================================== */
+@media (max-width: 640px) {
+    /* Cibles tactiles confortables (prioritaires sur le gabarit desktop ci-dessus) */
+    .btn-primary,
+    .btn-secondary,
+    .btn-outline {
+        min-height: 44px;
+    }
+    .btn-icon {
+        min-width: 40px;
+        min-height: 40px;
+    }
+
+    /* Rangées de boutons écrites en ligne dans le HTML : elles passent à la ligne
+       et se partagent la largeur au lieu de déborder */
+    [style*="display:flex"]:has(> .btn-primary, > .btn-outline, > .btn-secondary),
+    [style*="display: flex"]:has(> .btn-primary, > .btn-outline, > .btn-secondary) {
+        flex-wrap: wrap;
+    }
+    [style*="display:flex"] > .btn-primary,
+    [style*="display:flex"] > .btn-outline,
+    [style*="display:flex"] > .btn-secondary,
+    [style*="display: flex"] > .btn-primary,
+    [style*="display: flex"] > .btn-outline,
+    [style*="display: flex"] > .btn-secondary {
+        flex: 1 1 auto;
+    }
+    /* Listes déroulantes à côté d'un bouton : pleine largeur */
+    [style*="display:flex"] > select.form-control,
+    [style*="display: flex"] > select.form-control {
+        flex: 1 1 100%;
+        max-width: none !important;
+    }
+
+    /* Profil : avatar au-dessus, contenu en dessous */
+    .profile-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+        padding: 1.1rem;
+        text-align: left;
+    }
+    .profile-header .avatar-wrapper {
+        align-self: center;
+        width: 88px;
+        height: 88px;
+    }
+    #profile-display-name {
+        text-align: center;
+    }
+    .profile-section {
+        padding: 1.1rem;
+        margin-bottom: 1rem;
+    }
+    .profile-section h3 {
+        font-size: 1.05rem;
+    }
+    /* « Titre + bouton » : le bouton passe sous le titre, en pleine largeur */
+    .profile-section > .flex-between {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .profile-section > .flex-between > .btn-outline,
+    .profile-section > .flex-between > .btn-primary {
+        width: 100%;
+    }
+
+    /* Cartes : actions du bas en pleine largeur, icônes bien alignées en haut */
+    .card .card-header > div[style*="display:flex"],
+    .card .card-header > div[style*="display: flex"] {
+        flex-shrink: 0;
+    }
+    .card [style*="width:100%"].btn-outline,
+    .card [style*="width:100%"].btn-primary {
+        width: 100%;
+    }
+
+    /* Panneau d'alertes du coach : plus compact */
+    .notifications-panel {
+        padding: 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    /* Administration : contrôles de période empilés */
+    .admin-period-controls {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+    .admin-period-controls .form-control,
+    .admin-period-controls .btn-primary {
+        flex: 1 1 auto;
+    }
+
+    /* Grilles de cartes « membres / groupes » : 2 colonnes sur les grands téléphones */
+    #coach-groups-view,
+    #coach-athletes-grid,
+    #athlete-club-members-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    #coach-groups-view .card,
+    #coach-athletes-grid .card,
+    #athlete-club-members-grid .card {
+        padding: 0.9rem 0.6rem;
+    }
+    #coach-groups-view .card-title,
+    #coach-athletes-grid .card-title,
+    #athlete-club-members-grid .card-title {
+        font-size: 0.95rem !important;
+        overflow-wrap: anywhere;
+    }
+}
+
+/* Très petits téléphones (≤ 360 px) : on resserre encore */
+@media (max-width: 360px) {
+    .tab-content {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    nav button {
+        min-width: 52px;
+        font-size: 0.62rem;
+    }
+    nav .nav-icon {
+        width: 40px;
+    }
+    .btn-primary,
+    .btn-secondary,
+    .btn-outline {
+        padding-left: 0.8rem;
+        padding-right: 0.8rem;
+        font-size: 0.85rem;
+    }
+    #coach-groups-view,
+    #coach-athletes-grid,
+    #athlete-club-members-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+    }
+}
+
+/* Le bouton rond du chrono garde son gabarit (34 px) malgré la hauteur minimale des boutons */
+.btn-outline.chrono-toggle {
+    min-height: 34px;
+}
+
+/* Croix de fermeture : pas de rotation au survol */
+.close-btn:hover {
+    transform: none;
+}
+
+/* Notifications (bas du profil) : bouton sobre, lien d'installation juste en dessous */
+.push-entry .btn-outline {
+    font-size: 0.85rem;
+}
+
+.push-entry + .install-app-entry {
+    margin-top: 0.75rem;
 }

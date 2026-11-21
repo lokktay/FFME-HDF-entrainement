@@ -603,5 +603,59 @@ service cloud.firestore {
         request.resource.data.status in ['approved', 'rejected'] &&
         request.resource.data.resolvedBy == request.auth.uid;
     }
+
+    // Abonnements aux notifications push (un document par utilisateur, une entrée par appareil).
+    // Lisible par son propriétaire et par les coachs/gérants de l'un de ses clubs (pour le Worker,
+    // qui lit avec le jeton du coach). Les adresses seules ne permettent pas d'envoyer :
+    // il faut aussi la clé privée VAPID, qui n'existe que dans le Worker.
+    match /pushSubscriptions/{userId} {
+      allow read: if isAuth() &&
+        (request.auth.uid == userId ||
+         (activeClubId() != '' &&
+          activeClubId() in resource.data.get('clubIds', []) &&
+          isCoach(activeClubId())));
+      allow create, update: if isAuth() && request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly(['clubIds', 'devices', 'updatedAt']) &&
+        request.resource.data.get('clubIds', []) is list &&
+        request.resource.data.get('clubIds', []).size() <= 20 &&
+        request.resource.data.get('devices', {}) is map &&
+        request.resource.data.get('devices', {}).size() <= 10;
+      allow delete: if isAuth() && request.auth.uid == userId;
+    }
+
+    match /globalLibrary/{entryId} {
+      allow read: if isAuth();
+      // Bibliothèque commune : séances publiées par n'importe quel coach, copiables par tous.
+      allow create: if isAuth() &&
+        activeClubId() != '' &&
+        isCoach(activeClubId()) &&
+        request.resource.data.keys().hasOnly([
+          'kind', 'name', 'blocks', 'sourceSessionId', 'authorId', 'authorName', 'clubName', 'createdAt'
+        ]) &&
+        request.resource.data.kind == 'session' &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 120 &&
+        request.resource.data.blocks is list &&
+        request.resource.data.blocks.size() <= 100 &&
+        request.resource.data.sourceSessionId is string &&
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.authorName is string &&
+        request.resource.data.authorName.size() <= 120 &&
+        request.resource.data.clubName is string &&
+        request.resource.data.clubName.size() <= 120 &&
+        request.resource.data.createdAt == request.time;
+      // Seuls l'auteur et les administrateurs peuvent modifier (nom/exercices) ou supprimer.
+      allow update: if isAuth() &&
+        (isPlatformAdmin() || resource.data.authorId == request.auth.uid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'blocks']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 120 &&
+        request.resource.data.blocks is list &&
+        request.resource.data.blocks.size() <= 100;
+      allow delete: if isAuth() &&
+        (isPlatformAdmin() || resource.data.authorId == request.auth.uid);
+    }
   }
 }
