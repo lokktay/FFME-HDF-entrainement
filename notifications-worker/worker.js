@@ -81,7 +81,13 @@ async function handleNotifyAssignments(request, env) {
             typeof assignment.athleteId === 'string' && ID_PATTERN.test(assignment.athleteId) &&
             typeof assignment.assignedAt === 'number' &&
             Math.abs(now - assignment.assignedAt) <= MAX_ASSIGNMENT_AGE_MS;
-        if(!isValid) { skipped++; continue; }
+        if(!isValid) {
+            skipped++;
+            console.warn(`Attribution ${assignmentId} ignorée : ` + (!assignment
+                ? 'introuvable ou non lisible avec les droits du coach'
+                : 'auteur différent, déjà réalisée ou trop ancienne'));
+            continue;
+        }
 
         const entry = perAthlete.get(assignment.athleteId) || { count: 0, sessionName: '' };
         entry.count++;
@@ -92,9 +98,11 @@ async function handleNotifyAssignments(request, env) {
     // 2. Envoie une notification par appareil de chaque athlète
     let sent = 0;
     let failed = 0;
+    let athletesWithoutDevice = 0;
     for(const [athleteId, entry] of perAthlete) {
         const record = await getFirestoreDoc(env, token, `pushSubscriptions/${athleteId}`);
         const devices = record && record.devices && typeof record.devices === 'object' ? Object.values(record.devices) : [];
+        if(devices.length === 0) athletesWithoutDevice++;
         const payload = encoder.encode(JSON.stringify({
             type: 'sessions_assigned',
             count: entry.count,
@@ -113,7 +121,14 @@ async function handleNotifyAssignments(request, env) {
         }
     }
 
-    return { sent, failed, skipped, athletes: perAthlete.size };
+    const result = { sent, failed, skipped, athletes: perAthlete.size, athletesWithoutDevice };
+    // Résumé lisible dans l'onglet « Logs » du Worker
+    console.log(
+        `Bilan : ${sent} notification(s) envoyée(s), ${failed} échec(s), ` +
+        `${skipped} attribution(s) refusée(s), ${perAthlete.size} athlète(s) concerné(s), ` +
+        `${athletesWithoutDevice} sans appareil abonné`
+    );
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +211,10 @@ async function sendWebPush(device, payloadBytes, env) {
         body
     });
     // 404 / 410 : l'appareil s'est désabonné. L'app nettoie ses abonnements à la prochaine ouverture.
+    if(!response.ok) {
+        const service = new URL(device.endpoint).host;
+        console.warn(`Refus du service de notification ${service} : ${response.status} ${(await response.text()).slice(0, 300)}`);
+    }
     return response.ok;
 }
 

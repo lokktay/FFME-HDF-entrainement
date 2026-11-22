@@ -8,6 +8,10 @@ compatibility_date = "2025-01-01"
 # au lieu de les effacer à chaque déploiement. Les secrets (VAPID_PRIVATE_JWK) sont toujours conservés.
 keep_vars = true
 
+# Enregistre les messages du Worker (onglet « Logs » du tableau de bord) pour comprendre chaque envoi.
+[observability]
+enabled = true
+
 # Réglages non sensibles (le dépôt est public).
 # VAPID_SUBJECT (adresse mail) et VAPID_PRIVATE_JWK (clé privée) restent UNIQUEMENT dans Cloudflare.
 [vars]
