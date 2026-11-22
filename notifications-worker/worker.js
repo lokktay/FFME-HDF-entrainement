@@ -99,6 +99,7 @@ async function handleNotifyAssignments(request, env) {
     let sent = 0;
     let failed = 0;
     let athletesWithoutDevice = 0;
+    const errors = [];
     for(const [athleteId, entry] of perAthlete) {
         const record = await getFirestoreDoc(env, token, `pushSubscriptions/${athleteId}`);
         const devices = record && record.devices && typeof record.devices === 'object' ? Object.values(record.devices) : [];
@@ -112,16 +113,22 @@ async function handleNotifyAssignments(request, env) {
         for(const device of devices) {
             if(!device || !device.endpoint || !device.p256dh || !device.auth) continue;
             try {
-                const ok = await sendWebPush(device, payload, env);
-                if(ok) sent++; else failed++;
+                const outcome = await sendWebPush(device, payload, env);
+                if(outcome.ok) sent++;
+                else {
+                    failed++;
+                    errors.push({ service: outcome.service, status: outcome.status, detail: outcome.detail });
+                }
             } catch(error) {
                 console.error('Échec d’envoi push :', error);
                 failed++;
+                errors.push({ service: 'worker', status: 0, detail: String(error && error.message || error).slice(0, 300) });
             }
         }
     }
 
-    const result = { sent, failed, skipped, athletes: perAthlete.size, athletesWithoutDevice };
+    // Diagnostic renvoyé à l'app (visible dans l'onglet Réseau du navigateur) : aucune donnée sensible
+    const result = { sent, failed, skipped, athletes: perAthlete.size, athletesWithoutDevice, keyPairOk: checkVapidKeyPair(env), errors: errors.slice(0, 5) };
     // Résumé lisible dans l'onglet « Logs » du Worker
     console.log(
         `Bilan : ${sent} notification(s) envoyée(s), ${failed} échec(s), ` +
@@ -197,6 +204,27 @@ function decodeFirestoreValue(value) {
 // Web Push (RFC 8291 : chiffrement aes128gcm, RFC 8292 : authentification VAPID)
 // ---------------------------------------------------------------------------
 
+// Vérifie que la clé publique (VAPID_PUBLIC_KEY) correspond bien à la clé privée (VAPID_PRIVATE_JWK).
+// Si elles viennent de deux générations différentes, Apple et Google refusent tous les envois.
+// Lit la clé privée, même si elle a été collée sans ses accolades { } ou avec le libellé
+// « VAPID_PRIVATE_JWK = » copié depuis la console.
+function parseVapidPrivateJwk(env) {
+    let raw = String(env.VAPID_PRIVATE_JWK || '').trim().replace(/^VAPID_PRIVATE_JWK\s*=\s*/, '');
+    if(!raw.startsWith('{')) raw = `{${raw}`;
+    if(!raw.endsWith('}')) raw = `${raw}}`;
+    return JSON.parse(raw);
+}
+
+function checkVapidKeyPair(env) {
+    try {
+        const jwk = parseVapidPrivateJwk(env);
+        const derivedPublic = concatBytes(new Uint8Array([4]), base64UrlToBytes(jwk.x), base64UrlToBytes(jwk.y));
+        return bytesToBase64Url(derivedPublic) === String(env.VAPID_PUBLIC_KEY || '').trim();
+    } catch {
+        return false;
+    }
+}
+
 async function sendWebPush(device, payloadBytes, env) {
     const body = await encryptPayload(device, payloadBytes);
     const response = await fetch(device.endpoint, {
@@ -211,11 +239,11 @@ async function sendWebPush(device, payloadBytes, env) {
         body
     });
     // 404 / 410 : l'appareil s'est désabonné. L'app nettoie ses abonnements à la prochaine ouverture.
-    if(!response.ok) {
-        const service = new URL(device.endpoint).host;
-        console.warn(`Refus du service de notification ${service} : ${response.status} ${(await response.text()).slice(0, 300)}`);
-    }
-    return response.ok;
+    const service = new URL(device.endpoint).host;
+    if(response.ok) return { ok: true, service, status: response.status };
+    const detail = (await response.text()).slice(0, 300);
+    console.warn(`Refus du service de notification ${service} : ${response.status} ${detail}`);
+    return { ok: false, service, status: response.status, detail };
 }
 
 async function encryptPayload(device, payloadBytes) {
@@ -258,7 +286,7 @@ async function buildVapidAuthorization(endpoint, env) {
         sub: normalizeVapidSubject(env.VAPID_SUBJECT)
     })));
     const unsigned = `${header}.${claims}`;
-    const privateJwk = JSON.parse(env.VAPID_PRIVATE_JWK);
+    const privateJwk = parseVapidPrivateJwk(env);
     delete privateJwk.key_ops; // évite un conflit d'usages selon l'outil qui a exporté la clé
     const key = await crypto.subtle.importKey('jwk', privateJwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
     const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, encoder.encode(unsigned)));
