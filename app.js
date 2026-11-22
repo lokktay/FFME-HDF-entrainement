@@ -4368,15 +4368,30 @@ async function renderPushEntry() {
     entry.style.display = '';
 
     let subscribed = false;
+    let registeredInFirebase = false;
     try {
         const registration = await navigator.serviceWorker.ready;
-        subscribed = Notification.permission === 'granted' && Boolean(await registration.pushManager.getSubscription());
+        const subscription = Notification.permission === 'granted' ? await registration.pushManager.getSubscription() : null;
+        subscribed = Boolean(subscription);
+        // Vérifie aussi que l'appareil est bien enregistré dans Firebase : c'est là que le Worker le cherche
+        const owner = getPushOwner();
+        if(subscription && owner && auth.currentUser && auth.currentUser.uid === owner.id) {
+            const deviceKey = await getPushDeviceKey(subscription.endpoint);
+            const snapshot = await db.collection('pushSubscriptions').doc(owner.id).get();
+            registeredInFirebase = Boolean(snapshot.exists && snapshot.data().devices && snapshot.data().devices[deviceKey]);
+        }
     } catch(error) {
-        subscribed = false;
+        console.warn("Vérification de l'abonnement aux notifications impossible :", error);
     }
     if(Notification.permission === 'denied') {
         button.style.display = 'none';
         status.textContent = "Notifications bloquées dans les réglages de cet appareil.";
+    } else if(subscribed && !registeredInFirebase) {
+        // Autorisé sur le téléphone mais pas enregistré côté serveur : on propose de réessayer
+        button.style.display = '';
+        button.textContent = "Terminer l'activation des notifications";
+        button.onclick = enablePushNotifications;
+        status.textContent = "Autorisées sur ce téléphone, mais pas encore enregistrées : touchez le bouton pour finaliser.";
     } else {
         button.style.display = '';
         button.textContent = subscribed ? 'Désactiver les notifications' : 'Activer les notifications';
