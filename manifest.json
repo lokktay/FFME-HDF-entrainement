@@ -1,6 +1,6 @@
 {
-  "name": "FFME Training",
-  "short_name": "FFME",
+  "name": "HDF Climbing",
+  "short_name": "HDF Climbing",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#F1F5F9",

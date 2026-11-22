@@ -729,15 +729,15 @@ service cloud.firestore {
     }
 
     // Abonnements aux notifications push (un document par utilisateur, une entrée par appareil).
-    // Lisible par son propriétaire et par les coachs/gérants de l'un de ses clubs (pour le Worker,
-    // qui lit avec le jeton du coach). Les adresses seules ne permettent pas d'envoyer :
-    // il faut aussi la clé privée VAPID, qui n'existe que dans le Worker.
+    // Lisible par son propriétaire et par les membres de l'un de ses clubs : le Worker lit avec le
+    // jeton de celui qui déclenche l'envoi (coach qui attribue, membre qui écrit un message, athlète
+    // qui valide sa séance). Les adresses seules ne permettent PAS d'envoyer : il faut aussi la clé
+    // privée VAPID, qui n'existe que dans le Worker.
     match /pushSubscriptions/{userId} {
       allow read: if isAuth() &&
         (request.auth.uid == userId ||
-         (activeClubId() != '' &&
-          activeClubId() in resource.data.get('clubIds', []) &&
-          isCoach(activeClubId())));
+         resource.data.get('clubIds', []).hasAny(
+           userClubIds(get(/databases/$(database)/documents/users/$(request.auth.uid)).data)));
       allow create, update: if isAuth() && request.auth.uid == userId &&
         request.resource.data.keys().hasOnly(['clubIds', 'devices', 'updatedAt']) &&
         request.resource.data.get('clubIds', []) is list &&
@@ -745,6 +745,30 @@ service cloud.firestore {
         request.resource.data.get('devices', {}) is map &&
         request.resource.data.get('devices', {}).size() <= 10;
       allow delete: if isAuth() && request.auth.uid == userId;
+    }
+
+    // Cloche de suivi : coachs / entraîneurs / gérants qui veulent les alertes d'un athlète.
+    // Chaque coach ne peut ajouter ou retirer QUE lui-même, et seulement pour un membre de son club.
+    // Lisible par l'athlète (pour que le Worker trouve qui prévenir quand il valide une séance)
+    // et par les coachs de son club (pour afficher l'état de la cloche).
+    match /pushFollowers/{athleteId} {
+      allow read: if isAuth() &&
+        (request.auth.uid == athleteId ||
+         isCoachForUser(get(/databases/$(database)/documents/users/$(athleteId)).data));
+      allow create: if isAuth() &&
+        request.auth.uid != athleteId &&
+        isCoachForUser(get(/databases/$(database)/documents/users/$(athleteId)).data) &&
+        request.resource.data.keys().hasOnly(['coachIds', 'updatedAt']) &&
+        request.resource.data.coachIds == [request.auth.uid];
+      allow update: if isAuth() &&
+        request.auth.uid != athleteId &&
+        isCoachForUser(get(/databases/$(database)/documents/users/$(athleteId)).data) &&
+        request.resource.data.keys().hasOnly(['coachIds', 'updatedAt']) &&
+        request.resource.data.coachIds is list &&
+        request.resource.data.coachIds.size() <= 50 &&
+        request.resource.data.coachIds.toSet().difference(resource.data.get('coachIds', []).toSet())
+          .union(resource.data.get('coachIds', []).toSet().difference(request.resource.data.coachIds.toSet()))
+          .hasOnly([request.auth.uid]);
     }
 
     match /globalLibrary/{entryId} {

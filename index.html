@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>FFME - Entraînement Escalade</title>
+    <title>HDF Climbing</title>
     
     <!-- Thème appliqué avant l'affichage, pour éviter un flash clair en mode sombre -->
     <script>
@@ -33,10 +33,12 @@
     <!-- Lien vers notre fichier de style séparé.
          ?v=… : à incrémenter avec CACHE_NAME (service-worker.js) à chaque mise en ligne, pour que
          le navigateur ne mélange jamais un ancien styles.css/app.js avec le nouveau index.html -->
-    <link rel="stylesheet" href="styles.css?v=20">
+    <link rel="stylesheet" href="styles.css?v=22">
     <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0055A4">
 <link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-title" content="HDF Climbing">
+<meta name="application-name" content="HDF Climbing">
 </head>
 <body>
 
@@ -49,7 +51,8 @@
     <!-- AUTH SCREEN -->
     <div id="auth-screen">
         <div class="auth-container">
-            <h2>FFME Training</h2>
+            <img class="auth-logo" src="icon-192.png" alt="" width="88" height="88">
+            <h2>HDF Climbing</h2>
             <div class="auth-tabs">
                 <div class="auth-tab active" onclick="switchAuthTab('login')">Connexion</div>
                 <div class="auth-tab" onclick="switchAuthTab('register')">Inscription</div>
@@ -123,7 +126,7 @@
     <div id="app-content">
         <header>
             <div class="header-left">
-                <h1>HDF Training</h1>
+                <h1>HDF Climbing</h1>
                 <div class="user-info" onclick="toggleAccountMenu()">
                     <span id="header-user-info-text" class="header-user-info"></span>
                     <div id="account-dropdown" class="account-dropdown"></div>
@@ -717,7 +720,7 @@
     </div>
     
     <!-- MODAL : VUE COACH SUR ATHLETE -->
-    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div id="view-athlete-cycles-section" class="profile-section" style="display:none;"><div class="flex-between section-header"><h3>Cycles d'entraînement</h3><button class="btn-outline" onclick="openCycleModal(viewedAthleteId)"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nouveau cycle</button></div><div id="view-athlete-cycles" class="cycle-list"></div></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div><div id="view-athlete-role-control" class="profile-section" style="display:none;"><h3>Rôle dans le club</h3><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><select id="view-athlete-role" class="form-control" style="max-width:320px;"><option value="athlete">Athlète</option><option value="initiateur">Initiateur</option><option value="coach">Coach</option><option value="entraineur">Entraîneur</option><option value="gerant">Gérant du club</option></select><button class="btn-primary" onclick="updateClubMemberRole()">Enregistrer le rôle</button></div></div></div><div id="coach-ath-view-historique" style="display:none;"><section class="coach-history-section"><h3>Séances en cours</h3><div id="coach-ath-current-sessions" class="grid"></div></section><section class="coach-history-section"><h3>Séances réalisées</h3><div id="coach-ath-history-list" class="grid"></div></section></div></div></div>
+    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><div class="view-athlete-header-actions"><button id="view-athlete-bell" type="button" class="athlete-bell" style="display:none;" onclick="toggleAthleteBell()" aria-pressed="false" aria-label="Alertes de ce membre" title="Alertes de ce membre"><svg class="bell-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><svg class="bell-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/></svg></button><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div id="view-athlete-cycles-section" class="profile-section" style="display:none;"><div class="flex-between section-header"><h3>Cycles d'entraînement</h3><button class="btn-outline" onclick="openCycleModal(viewedAthleteId)"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nouveau cycle</button></div><div id="view-athlete-cycles" class="cycle-list"></div></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div><div id="view-athlete-role-control" class="profile-section" style="display:none;"><h3>Rôle dans le club</h3><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><select id="view-athlete-role" class="form-control" style="max-width:320px;"><option value="athlete">Athlète</option><option value="initiateur">Initiateur</option><option value="coach">Coach</option><option value="entraineur">Entraîneur</option><option value="gerant">Gérant du club</option></select><button class="btn-primary" onclick="updateClubMemberRole()">Enregistrer le rôle</button></div></div></div><div id="coach-ath-view-historique" style="display:none;"><section class="coach-history-section"><h3>Séances en cours</h3><div id="coach-ath-current-sessions" class="grid"></div></section><section class="coach-history-section"><h3>Séances réalisées</h3><div id="coach-ath-history-list" class="grid"></div></section></div></div></div>
 
     <!-- Modals Skills & Calendar -->
     <div id="modal-skills" class="modal-overlay" style="z-index:1050;"><div class="modal modal-large"><div class="modal-header"><h2 style="font-size:1.5rem;">Auto-évaluation (0 à 10)</h2><button class="close-btn" onclick="closeModal('modal-skills')">&times;</button></div><div style="display: flex; gap: 2rem; flex-wrap:wrap;"><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-blue); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Technique & Gestuelle</h3><div id="skills-form-t1" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--danger); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Physique & Mental</h3><div id="skills-form-t2" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div></div><button class="btn-primary" style="width:100%; margin-top:2rem; padding:1.25rem; font-size:1.15rem;" onclick="saveSkills()">Enregistrer</button></div></div>
@@ -880,8 +883,8 @@
     </div>
 
     <!-- Liens vers les fichiers JavaScript (school.js ne fait que déclarer des fonctions : chargé en premier) -->
-    <script defer src="school.js?v=20"></script>
-    <script defer src="app.js?v=20"></script>
+    <script defer src="school.js?v=22"></script>
+    <script defer src="app.js?v=22"></script>
     <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

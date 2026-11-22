@@ -2520,6 +2520,7 @@ function showApp() {
     updateSchoolNavVisibility();
     if(!currentUser.clubId) switchTab('settings');
     refreshPushState();
+    handleChatDeepLink();
     const age = (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25);
     const btnLink = document.getElementById('btn-link-child');
     if(btnLink) btnLink.style.display = age >= 18 && !originalParentUser ? 'inline-block' : 'none';
@@ -3751,7 +3752,8 @@ function openAthleteProfileCoach(athId) {
     renderRadarChart('chart-t2-coach', ath.profile.skillsT2, 'Physique & Mental', 'rgba(239, 68, 68, 0.5)');
     selectedUserIdForCalendar = ath.id; renderCalendar('coach-view-calendar-container');
     renderMemberCycles(ath.id);
-    
+    renderAthleteBell(ath.id);
+
     switchAthleteViewTab('profil');
     openModal('modal-view-athlete');
 }
@@ -4234,6 +4236,8 @@ document.getElementById('btn-validate-session').onclick = async function() {
             });
         }
         await batch.commit();
+        // Première validation seulement : prévient les coachs qui suivent l'athlète (cloche), si besoin
+        if(!a.isDone) notifySessionDone(a.id);
 
         closeModal('modal-view-session');
         refreshCurrentTab();
@@ -4401,18 +4405,135 @@ async function renderPushEntry() {
 }
 
 // Appelé après une attribution : le Worker vérifie les attributions puis notifie les athlètes
-async function notifyAssignedAthletes(assignmentIds) {
-    if(!PUSH_CONFIG.workerUrl || !assignmentIds || assignmentIds.length === 0 || !auth.currentUser) return;
+// Appel générique au Worker : toujours en arrière-plan, n'empêche jamais l'action de l'utilisateur
+async function callNotificationWorker(path, body) {
+    if(!PUSH_CONFIG.workerUrl || !auth.currentUser) return;
     try {
         const token = await auth.currentUser.getIdToken();
-        const response = await fetch(PUSH_CONFIG.workerUrl.replace(/\/+$/, '') + '/notify-assignments', {
+        const response = await fetch(PUSH_CONFIG.workerUrl.replace(/\/+$/, '') + path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ assignmentIds })
+            body: JSON.stringify(body)
         });
         if(!response.ok) console.warn("Notification non envoyée :", response.status, await response.text());
     } catch(error) {
         console.warn("Notification non envoyée :", error);
+    }
+}
+
+function notifyAssignedAthletes(assignmentIds) {
+    if(!assignmentIds || assignmentIds.length === 0) return;
+    callNotificationWorker('/notify-assignments', { assignmentIds });
+}
+
+function notifyMessageSent(messageId) {
+    if(messageId) callNotificationWorker('/notify-message', { messageId });
+}
+
+function notifySessionDone(assignmentId) {
+    if(assignmentId) callNotificationWorker('/notify-session-done', { assignmentId });
+}
+
+// Ferme les notifications déjà affichées pour un sujet (ex. une conversation qu'on vient d'ouvrir)
+async function clearPushNotifications(tag) {
+    if(!isPushSupported()) return;
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const list = await registration.getNotifications({ tag });
+        list.forEach(notification => notification.close());
+    } catch(error) {
+        // Sans importance : la notification disparaîtra d'elle-même
+    }
+}
+
+// Ouverture d'une conversation depuis une notification de message (#chat=<id> ou message du service worker)
+function openChatFromNotification(userId) {
+    if(!userId || !currentUser || !clubMembers.some(member => member.id === userId)) return false;
+    const panel = document.getElementById('global-chat-panel');
+    if(panel && panel.style.display !== 'flex') toggleChat();
+    openConversation(userId);
+    return true;
+}
+
+function handleChatDeepLink() {
+    const match = window.location.hash.match(/^#chat=([A-Za-z0-9_-]{1,128})$/);
+    if(!match) return;
+    // Les membres du club arrivent en temps réel : on réessaie quelques secondes si besoin
+    let attempts = 0;
+    const tryOpen = () => {
+        if(openChatFromNotification(match[1]) || ++attempts > 20) {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            return;
+        }
+        setTimeout(tryOpen, 300);
+    };
+    tryOpen();
+}
+
+if('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+        if(event.data && event.data.type === 'open-chat') openChatFromNotification(event.data.userId);
+    });
+}
+
+// --- CLOCHE DE SUIVI D'UN ATHLÈTE (coachs / entraîneurs / gérants) ---
+let viewedAthleteFollowed = false;
+
+async function renderAthleteBell(athleteId) {
+    const bell = document.getElementById('view-athlete-bell');
+    if(!bell) return;
+    const canFollow = hasCoachRights() && athleteId && athleteId !== currentUser.id;
+    bell.style.display = canFollow ? '' : 'none';
+    if(!canFollow) return;
+    bell.disabled = true;
+    try {
+        const snapshot = await db.collection('pushFollowers').doc(athleteId).get();
+        const coachIds = (snapshot.exists && snapshot.data().coachIds) || [];
+        viewedAthleteFollowed = coachIds.includes(currentUser.id);
+    } catch(error) {
+        console.warn("Lecture de la cloche impossible :", error);
+        viewedAthleteFollowed = false;
+    }
+    if(viewedAthleteId !== athleteId) return; // un autre profil a été ouvert entre-temps
+    updateAthleteBellButton();
+    bell.disabled = false;
+}
+
+function updateAthleteBellButton() {
+    const bell = document.getElementById('view-athlete-bell');
+    if(!bell) return;
+    bell.classList.toggle('active', viewedAthleteFollowed);
+    bell.setAttribute('aria-pressed', String(viewedAthleteFollowed));
+    const label = viewedAthleteFollowed
+        ? 'Alertes activées pour ce membre (toucher pour les couper)'
+        : 'Alertes coupées pour ce membre (toucher pour les activer)';
+    bell.setAttribute('aria-label', label);
+    bell.title = label;
+}
+
+async function toggleAthleteBell() {
+    const athleteId = viewedAthleteId;
+    const bell = document.getElementById('view-athlete-bell');
+    if(!athleteId || !bell || bell.disabled) return;
+    const follow = !viewedAthleteFollowed;
+    bell.disabled = true;
+    try {
+        await db.collection('pushFollowers').doc(athleteId).set({
+            coachIds: follow
+                ? firebase.firestore.FieldValue.arrayUnion(currentUser.id)
+                : firebase.firestore.FieldValue.arrayRemove(currentUser.id),
+            updatedAt: Date.now()
+        }, { merge: true });
+        viewedAthleteFollowed = follow;
+        updateAthleteBellButton();
+        if(follow && isPushConfigured() && Notification.permission !== 'granted') {
+            alert("Alertes activées pour ce membre. Pour les recevoir sur cet appareil, activez aussi les notifications en bas de « Mon profil ».");
+        }
+    } catch(error) {
+        console.error("Erreur de mise à jour de la cloche :", error);
+        alert("Impossible de modifier les alertes de ce membre : " + error.message);
+    } finally {
+        bell.disabled = false;
     }
 }
 
@@ -5233,6 +5354,7 @@ function openConversation(targetId) {
     document.getElementById('chat-back-btn').style.display = 'block';
     document.getElementById('chat-header-title').textContent = targetUser.username;
     loadMessages();
+    clearPushNotifications(`message-${targetId}`); // conversation lue : sa notification disparaît
 }
         
 function loadMessages() {
@@ -5253,8 +5375,9 @@ async function sendMessage() {
     if(!text || !activeChatUserId) return;
     if(text.length > 10000) return alert("Le message ne peut pas dépasser 10 000 caractères.");
     try {
-        await db.collection('messages').add({ clubId: currentUser.clubId, senderId: currentUser.id, receiverId: activeChatUserId, text, date: Date.now() });
+        const messageRef = await db.collection('messages').add({ clubId: currentUser.clubId, senderId: currentUser.id, receiverId: activeChatUserId, text, date: Date.now() });
         document.getElementById('chat-input-text').value = '';
+        notifyMessageSent(messageRef.id); // en arrière-plan
     } catch(error) {
         console.error("Erreur d'envoi du message:", error);
         alert("Impossible d'envoyer le message : " + error.message);

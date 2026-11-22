@@ -1,21 +1,24 @@
 /**
- * Worker Cloudflare — envoi des notifications push de HDF Training.
+ * Worker Cloudflare — envoi des notifications push de HDF Climbing.
  *
- * Route : POST /notify-assignments
- *   En-tête : Authorization: Bearer <jeton Firebase de l'utilisateur connecté>
- *   Corps   : { "assignmentIds": ["...", "..."] }
+ * Toutes les routes : POST, en-tête Authorization: Bearer <jeton Firebase de l'utilisateur connecté>
+ *
+ *   /notify-assignments    { assignmentIds: [...] }  (coach)   séances attribuées -> athlètes
+ *   /notify-message        { messageId }             (tous)    message reçu       -> destinataire
+ *   /notify-session-done   { assignmentId }          (athlète) séance validée     -> coachs qui suivent
+ *                                                     l'athlète (cloche) : « plus de séance à faire »
+ *                                                     et « ressenti d'effort élevé » (3 des 6 dernières à 8+)
  *
  * Sécurité :
- *   - Le jeton Firebase du coach est réutilisé pour lire Firestore : les règles de sécurité
- *     Firestore s'appliquent donc exactement comme dans l'app (un jeton invalide = lecture refusée).
- *   - Chaque attribution doit avoir été créée par CE coach (assignerId), il y a moins de 30 min,
- *     et ne pas être déjà réalisée. Impossible de notifier quelqu'un sans lui avoir attribué une séance.
+ *   - Le jeton Firebase de l'utilisateur est réutilisé pour lire Firestore : les règles de sécurité
+ *     s'appliquent exactement comme dans l'app (un jeton invalide = lecture refusée).
+ *   - Chaque envoi s'appuie sur une action réelle et récente de CET utilisateur (attribution créée,
+ *     message envoyé, séance validée) : impossible d'envoyer une notification arbitraire.
  *   - La clé privée VAPID (qui signe les envois) n'existe que dans les secrets du Worker.
  *
  * Variables à définir dans Cloudflare (Settings → Variables and Secrets) :
  *   FIREBASE_PROJECT_ID  (texte)   ex. ffme-plateforme-entrainement
  *   ALLOWED_ORIGINS      (texte)   adresses autorisées à appeler le Worker, séparées par des virgules
- *                                  ex. https://ffme-plateforme-entrainement.web.app,http://localhost:3000
  *   VAPID_PUBLIC_KEY     (texte)   clé publique (format base64url)
  *   VAPID_PRIVATE_JWK    (secret)  clé privée (format JSON / JWK)
  *   VAPID_SUBJECT        (texte)   contact de l'expéditeur, ex. mailto:contact@monclub.fr
@@ -23,8 +26,19 @@
 
 const MAX_ASSIGNMENTS_PER_CALL = 50;
 const MAX_ASSIGNMENT_AGE_MS = 30 * 60 * 1000;
+const MAX_EVENT_AGE_MS = 10 * 60 * 1000;
+const MESSAGE_PREVIEW_LENGTH = 80;
+const HIGH_RPE_THRESHOLD = 8;
+const HIGH_RPE_WINDOW = 6;
+const HIGH_RPE_MIN_COUNT = 3;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const encoder = new TextEncoder();
+
+const ROUTES = {
+    '/notify-assignments': handleNotifyAssignments,
+    '/notify-message': handleNotifyMessage,
+    '/notify-session-done': handleNotifySessionDone
+};
 
 export default {
     async fetch(request, env) {
@@ -35,13 +49,18 @@ export default {
         }
         if(!cors) return json({ error: 'Origine non autorisée.' }, 403);
 
-        const url = new URL(request.url);
-        if(request.method !== 'POST' || url.pathname !== '/notify-assignments') {
+        const handler = ROUTES[new URL(request.url).pathname];
+        if(request.method !== 'POST' || !handler) {
             return json({ error: 'Route inconnue.' }, 404, cors);
         }
 
         try {
-            return json(await handleNotifyAssignments(request, env), 200, cors);
+            const token = getBearerToken(request);
+            const uid = getTokenUid(token, env);
+            const body = await readJsonBody(request);
+            const stats = createStats();
+            await handler({ env, token, uid, body, stats });
+            return json(finishStats(stats, env, new URL(request.url).pathname), 200, cors);
         } catch(error) {
             const status = error.status || 500;
             if(status === 500) console.error(error);
@@ -51,91 +70,199 @@ export default {
 };
 
 // ---------------------------------------------------------------------------
-// Logique métier
+// Séances attribuées (coach -> athlètes)
 // ---------------------------------------------------------------------------
 
-async function handleNotifyAssignments(request, env) {
-    const token = getBearerToken(request);
-    const uid = getTokenUid(token, env);
-
-    let body;
-    try {
-        body = await request.json();
-    } catch {
-        throw httpError(400, 'Corps de requête invalide.');
-    }
-    const assignmentIds = [...new Set(Array.isArray(body && body.assignmentIds) ? body.assignmentIds : [])]
-        .filter(id => typeof id === 'string' && ID_PATTERN.test(id))
+async function handleNotifyAssignments({ env, token, uid, body, stats }) {
+    const assignmentIds = [...new Set(Array.isArray(body.assignmentIds) ? body.assignmentIds : [])]
+        .filter(isValidId)
         .slice(0, MAX_ASSIGNMENTS_PER_CALL);
     if(assignmentIds.length === 0) throw httpError(400, 'Aucune attribution valide.');
 
-    // 1. Vérifie chaque attribution avec les droits du coach, et regroupe par athlète
+    // Vérifie chaque attribution avec les droits du coach, et regroupe par athlète
     const now = Date.now();
     const perAthlete = new Map(); // athleteId -> { count, sessionName }
-    let skipped = 0;
     for(const assignmentId of assignmentIds) {
         const assignment = await getFirestoreDoc(env, token, `assignments/${assignmentId}`);
         const isValid = assignment &&
             assignment.assignerId === uid &&
             assignment.isDone === false &&
-            typeof assignment.athleteId === 'string' && ID_PATTERN.test(assignment.athleteId) &&
+            isValidId(assignment.athleteId) &&
             typeof assignment.assignedAt === 'number' &&
             Math.abs(now - assignment.assignedAt) <= MAX_ASSIGNMENT_AGE_MS;
         if(!isValid) {
-            skipped++;
+            stats.skipped++;
             console.warn(`Attribution ${assignmentId} ignorée : ` + (!assignment
                 ? 'introuvable ou non lisible avec les droits du coach'
                 : 'auteur différent, déjà réalisée ou trop ancienne'));
             continue;
         }
-
         const entry = perAthlete.get(assignment.athleteId) || { count: 0, sessionName: '' };
         entry.count++;
         entry.sessionName = (assignment.sessionSnapshot && assignment.sessionSnapshot.name) || entry.sessionName;
         perAthlete.set(assignment.athleteId, entry);
     }
 
-    // 2. Envoie une notification par appareil de chaque athlète
-    let sent = 0;
-    let failed = 0;
-    let athletesWithoutDevice = 0;
-    const errors = [];
     for(const [athleteId, entry] of perAthlete) {
-        const record = await getFirestoreDoc(env, token, `pushSubscriptions/${athleteId}`);
-        const devices = record && record.devices && typeof record.devices === 'object' ? Object.values(record.devices) : [];
-        if(devices.length === 0) athletesWithoutDevice++;
-        const payload = encoder.encode(JSON.stringify({
+        await sendToUser(env, token, athleteId, {
             type: 'sessions_assigned',
             count: entry.count,
             sessionName: String(entry.sessionName || '').slice(0, 120),
             url: './index.html'
-        }));
-        for(const device of devices) {
-            if(!device || !device.endpoint || !device.p256dh || !device.auth) continue;
-            try {
-                const outcome = await sendWebPush(device, payload, env);
-                if(outcome.ok) sent++;
-                else {
-                    failed++;
-                    errors.push({ service: outcome.service, status: outcome.status, detail: outcome.detail });
-                }
-            } catch(error) {
-                console.error('Échec d’envoi push :', error);
-                failed++;
-                errors.push({ service: 'worker', status: 0, detail: String(error && error.message || error).slice(0, 300) });
-            }
-        }
+        }, stats);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Message reçu (expéditeur -> destinataire)
+// ---------------------------------------------------------------------------
+
+async function handleNotifyMessage({ env, token, uid, body, stats }) {
+    if(!isValidId(body.messageId)) throw httpError(400, 'Message invalide.');
+    const message = await getFirestoreDoc(env, token, `messages/${body.messageId}`);
+    const isValid = message &&
+        message.senderId === uid &&
+        isValidId(message.receiverId) &&
+        message.receiverId !== uid &&
+        typeof message.date === 'number' &&
+        Math.abs(Date.now() - message.date) <= MAX_EVENT_AGE_MS;
+    if(!isValid) {
+        stats.skipped++;
+        console.warn(`Message ${body.messageId} ignoré : introuvable, autre expéditeur ou trop ancien`);
+        return;
     }
 
-    // Diagnostic renvoyé à l'app (visible dans l'onglet Réseau du navigateur) : aucune donnée sensible
-    const result = { sent, failed, skipped, athletes: perAthlete.size, athletesWithoutDevice, keyPairOk: checkVapidKeyPair(env), errors: errors.slice(0, 5) };
+    const sender = await getFirestoreDoc(env, token, `users/${uid}`);
+    const text = String(message.text || '').replace(/\s+/g, ' ').trim();
+    await sendToUser(env, token, message.receiverId, {
+        type: 'message',
+        senderId: uid,
+        senderName: String((sender && sender.username) || 'Nouveau message').slice(0, 60),
+        preview: text.length > MESSAGE_PREVIEW_LENGTH ? `${text.slice(0, MESSAGE_PREVIEW_LENGTH).trim()}…` : text,
+        url: `./index.html#chat=${uid}`
+    }, stats);
+}
+
+// ---------------------------------------------------------------------------
+// Séance validée (athlète -> coachs qui ont activé la cloche sur son profil)
+// ---------------------------------------------------------------------------
+
+async function handleNotifySessionDone({ env, token, uid, body, stats }) {
+    if(!isValidId(body.assignmentId)) throw httpError(400, 'Séance invalide.');
+    const assignment = await getFirestoreDoc(env, token, `assignments/${body.assignmentId}`);
+    const isValid = assignment &&
+        assignment.athleteId === uid &&
+        assignment.isDone === true &&
+        typeof assignment.doneAt === 'number' &&
+        Math.abs(Date.now() - assignment.doneAt) <= MAX_EVENT_AGE_MS &&
+        typeof assignment.clubId === 'string';
+    if(!isValid) {
+        stats.skipped++;
+        console.warn(`Validation ${body.assignmentId} ignorée : introuvable, autre athlète, non réalisée ou trop ancienne`);
+        return;
+    }
+
+    // Coachs qui suivent cet athlète (cloche allumée sur son profil)
+    const followers = await getFirestoreDoc(env, token, `pushFollowers/${uid}`);
+    const coachIds = [...new Set(Array.isArray(followers && followers.coachIds) ? followers.coachIds : [])]
+        .filter(id => isValidId(id) && id !== uid);
+    if(coachIds.length === 0) {
+        console.log('Aucun coach ne suit cet athlète : rien à envoyer.');
+        return;
+    }
+
+    // Toutes les séances de l'athlète dans ce club (lecture autorisée : ce sont les siennes)
+    const assignments = await runFirestoreQuery(env, token, 'assignments', [
+        ['clubId', assignment.clubId],
+        ['athleteId', uid]
+    ]);
+    const pendingCount = assignments.filter(item => item.isDone === false).length;
+
+    const done = assignments
+        .filter(item => item.isDone === true && typeof item.doneAt === 'number')
+        .sort((a, b) => b.doneAt - a.doneAt);
+    const isHigh = item => typeof item.avgRpe === 'number' && item.avgRpe >= HIGH_RPE_THRESHOLD;
+    const currentWindow = done.slice(0, HIGH_RPE_WINDOW);
+    const previousWindow = done.filter(item => item.id !== body.assignmentId).slice(0, HIGH_RPE_WINDOW);
+    const highCount = currentWindow.filter(isHigh).length;
+    // Une seule alerte quand le seuil est FRANCHI (pas à chaque séance suivante)
+    const crossedHighRpe = isHigh(assignment) &&
+        highCount >= HIGH_RPE_MIN_COUNT &&
+        previousWindow.filter(isHigh).length < HIGH_RPE_MIN_COUNT;
+
+    const athlete = await getFirestoreDoc(env, token, `users/${uid}`);
+    const athleteName = String((athlete && athlete.username) || 'Un athlète').slice(0, 60);
+
+    const payloads = [];
+    if(pendingCount === 0) {
+        payloads.push({ type: 'athlete_no_sessions', athleteId: uid, athleteName, url: './index.html' });
+    }
+    if(crossedHighRpe) {
+        payloads.push({ type: 'athlete_high_rpe', athleteId: uid, athleteName, count: highCount, window: HIGH_RPE_WINDOW, url: './index.html' });
+    }
+    if(payloads.length === 0) return;
+
+    for(const coachId of coachIds) {
+        for(const payload of payloads) await sendToUser(env, token, coachId, payload, stats);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Envoi commun
+// ---------------------------------------------------------------------------
+
+function createStats() {
+    return { sent: 0, failed: 0, skipped: 0, recipients: 0, recipientsWithoutDevice: 0, errors: [] };
+}
+
+function finishStats(stats, env, route) {
+    const result = { ...stats, keyPairOk: checkVapidKeyPair(env), errors: stats.errors.slice(0, 5) };
     // Résumé lisible dans l'onglet « Logs » du Worker
     console.log(
-        `Bilan : ${sent} notification(s) envoyée(s), ${failed} échec(s), ` +
-        `${skipped} attribution(s) refusée(s), ${perAthlete.size} athlète(s) concerné(s), ` +
-        `${athletesWithoutDevice} sans appareil abonné`
+        `Bilan ${route} : ${stats.sent} notification(s) envoyée(s), ${stats.failed} échec(s), ` +
+        `${stats.skipped} demande(s) refusée(s), ${stats.recipients} destinataire(s), ` +
+        `${stats.recipientsWithoutDevice} sans appareil abonné`
     );
     return result;
+}
+
+async function sendToUser(env, token, userId, data, stats) {
+    stats.recipients++;
+    const record = await getFirestoreDoc(env, token, `pushSubscriptions/${userId}`);
+    const devices = record && record.devices && typeof record.devices === 'object' ? Object.values(record.devices) : [];
+    if(devices.length === 0) {
+        stats.recipientsWithoutDevice++;
+        return;
+    }
+    const payload = encoder.encode(JSON.stringify(data));
+    for(const device of devices) {
+        if(!device || !device.endpoint || !device.p256dh || !device.auth) continue;
+        try {
+            const outcome = await sendWebPush(device, payload, env);
+            if(outcome.ok) stats.sent++;
+            else {
+                stats.failed++;
+                stats.errors.push({ service: outcome.service, status: outcome.status, detail: outcome.detail });
+            }
+        } catch(error) {
+            console.error('Échec d’envoi push :', error);
+            stats.failed++;
+            stats.errors.push({ service: 'worker', status: 0, detail: String(error && error.message || error).slice(0, 300) });
+        }
+    }
+}
+
+function isValidId(value) {
+    return typeof value === 'string' && ID_PATTERN.test(value);
+}
+
+async function readJsonBody(request) {
+    try {
+        const body = await request.json();
+        return body && typeof body === 'object' ? body : {};
+    } catch {
+        throw httpError(400, 'Corps de requête invalide.');
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +307,31 @@ async function getFirestoreDoc(env, token, path) {
     if(!response.ok) throw new Error(`Firestore ${response.status} : ${await response.text()}`);
     const doc = await response.json();
     return decodeFirestoreFields(doc.fields || {});
+}
+
+// Requête simple « champ == valeur » (filtres combinés par ET). Renvoie les documents décodés, avec leur id.
+async function runFirestoreQuery(env, token, collectionId, equalities) {
+    const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}` +
+        '/databases/(default)/documents:runQuery';
+    const filters = equalities.map(([field, value]) => ({
+        fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: String(value) } }
+    }));
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            structuredQuery: {
+                from: [{ collectionId }],
+                where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } }
+            }
+        })
+    });
+    if(response.status === 401) throw httpError(401, 'Jeton refusé par Firebase.');
+    if(!response.ok) throw new Error(`Firestore (requête) ${response.status} : ${await response.text()}`);
+    const rows = await response.json();
+    return (Array.isArray(rows) ? rows : [])
+        .filter(row => row && row.document)
+        .map(row => ({ id: row.document.name.split('/').pop(), ...decodeFirestoreFields(row.document.fields || {}) }));
 }
 
 function decodeFirestoreFields(fields) {

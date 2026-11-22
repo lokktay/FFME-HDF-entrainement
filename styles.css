@@ -6774,3 +6774,77 @@ html[data-theme="dark"] .club-picker-toggle {
         padding: 0.35rem 0;
     }
 }
+
+/* Logo au-dessus du nom de l'app sur l'écran de connexion / inscription */
+.auth-logo {
+    display: block;
+    width: 88px;
+    height: 88px;
+    margin: 0 auto 0.5rem;
+    object-fit: contain;
+}
+
+/* Cloche de suivi d'un membre (fiche profil, coachs / entraîneurs / gérants) */
+.view-athlete-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+}
+
+.athlete-bell {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--surface-subtle);
+    color: var(--text-light);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.athlete-bell svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.athlete-bell .bell-on,
+.athlete-bell.active .bell-off {
+    display: none;
+}
+
+.athlete-bell.active .bell-on {
+    display: block;
+}
+
+.athlete-bell.active {
+    background: var(--primary-subtle);
+    border-color: var(--primary-border);
+    color: var(--primary);
+}
+
+.athlete-bell:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.athlete-bell:focus-visible {
+    outline: 3px solid var(--primary-ring);
+    outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+    .athlete-bell {
+        width: 40px;
+        height: 40px;
+    }
+}

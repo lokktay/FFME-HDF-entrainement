@@ -1,5 +1,5 @@
 // À chaque mise en ligne : incrémenter ASSET_VERSION ici ET les « ?v=… » de index.html
-const ASSET_VERSION = '20';
+const ASSET_VERSION = '22';
 const CACHE_NAME = `ffme-cache-v${ASSET_VERSION}`;
 const urlsToCache = [
   './',
@@ -74,50 +74,82 @@ self.addEventListener('push', event => {
   event.waitUntil(showPushNotification(data));
 });
 
+// Additionne le compteur des notifications déjà affichées avec ce « tag » (regroupement)
+async function getExistingCount(tag) {
+  let count = 0;
+  try {
+    const existing = await self.registration.getNotifications({ tag });
+    existing.forEach(notification => {
+      count += (notification.data && Number(notification.data.count)) || 0;
+    });
+  } catch (error) {
+    count = 0;
+  }
+  return count;
+}
+
 async function showPushNotification(data) {
   const icon = new URL('icon-192.png', appBaseUrl).toString();
   const url = new URL(data.url || './', appBaseUrl).toString();
+  // Remplace la notification précédente du même sujet sans re-vibrer (renotify: false)
+  const show = (title, body, tag, extra = {}) => self.registration.showNotification(title, {
+    body,
+    tag,
+    renotify: false,
+    icon,
+    badge: icon,
+    data: { url, ...extra }
+  });
 
+  // Séances reçues : « Nouvelle séance » puis « Tu as reçu N séances »
   if (data.type === 'sessions_assigned') {
-    let previousCount = 0;
-    try {
-      const existing = await self.registration.getNotifications({ tag: SESSIONS_TAG });
-      existing.forEach(notification => {
-        previousCount += (notification.data && Number(notification.data.count)) || 0;
-      });
-    } catch (error) {
-      previousCount = 0;
-    }
-    const count = previousCount + (Number(data.count) || 1);
+    const count = await getExistingCount(SESSIONS_TAG) + (Number(data.count) || 1);
     const title = count > 1 ? `Tu as reçu ${count} séances !` : 'Nouvelle séance !';
     const body = count > 1
       ? "Ouvre l'app pour les découvrir."
       : (data.sessionName ? `« ${data.sessionName} » t'attend.` : "Une nouvelle séance t'attend.");
-    return self.registration.showNotification(title, {
-      body,
-      tag: SESSIONS_TAG,
-      renotify: false,
-      icon,
-      badge: icon,
-      data: { count, url }
-    });
+    return show(title, body, SESSIONS_TAG, { count });
   }
 
-  return self.registration.showNotification(data.title || 'HDF Training', {
-    body: data.body || '',
-    icon,
-    badge: icon,
-    data: { url }
-  });
+  // Message : début du message, puis « N messages non lus » (une notification par expéditeur)
+  if (data.type === 'message') {
+    const tag = `message-${data.senderId || 'inconnu'}`;
+    const count = await getExistingCount(tag) + 1;
+    const body = count > 1 ? `${count} messages non lus` : (data.preview || 'Nouveau message');
+    return show(data.senderName || 'Nouveau message', body, tag, { count, chatUserId: data.senderId || '' });
+  }
+
+  // Alertes des coachs (cloche activée sur le profil de l'athlète)
+  if (data.type === 'athlete_no_sessions') {
+    return show(
+      'Plus de séance à faire',
+      `${data.athleteName || 'Un athlète'} a terminé toutes ses séances.`,
+      `coach-no-sessions-${data.athleteId || ''}`
+    );
+  }
+  if (data.type === 'athlete_high_rpe') {
+    return show(
+      "Ressenti d'effort élevé",
+      `${data.athleteName || 'Un athlète'} : ${data.count || 3} de ses ${data.window || 6} dernières séances à un RPE de 8 ou plus.`,
+      `coach-high-rpe-${data.athleteId || ''}`
+    );
+  }
+
+  return show(data.title || 'HDF Climbing', data.body || '', 'general');
 }
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || appIndexUrl;
+  const data = event.notification.data || {};
+  const target = data.url || appIndexUrl;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windows => {
       const appWindow = windows.find(client => client.url.startsWith(appBaseUrl) && 'focus' in client);
-      if (appWindow) return appWindow.focus();
+      if (appWindow) {
+        // App déjà ouverte : on lui demande d'ouvrir directement la conversation
+        if (data.chatUserId) appWindow.postMessage({ type: 'open-chat', userId: data.chatUserId });
+        return appWindow.focus();
+      }
       return self.clients.openWindow(target);
     })
   );
