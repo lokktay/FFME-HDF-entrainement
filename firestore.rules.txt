@@ -181,10 +181,60 @@ service cloud.firestore {
         getAfter(/databases/$(database)/documents/parentLinkCodes/$(codeId)).data.usedBy == parentUserId;
     }
     
+    // Rôles : athlete < initiateur < coach < entraineur < gerant (chacun a les droits des rôles inférieurs)
     function isCoach(clubId) {
       let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       return isClubManager(clubId) ||
-        (isMyClub(clubId) && clubRole(userData, clubId) == 'coach');
+        (isMyClub(clubId) && clubRole(userData, clubId) in ['coach', 'entraineur']);
+    }
+
+    // Initiateur et plus : crée des séances / blocs, encadre l'école d'escalade
+    function isInstructor(clubId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isCoach(clubId) ||
+        (isMyClub(clubId) && clubRole(userData, clubId) == 'initiateur');
+    }
+
+    // Entraîneur et gérant : cycles d'entraînement des membres
+    function isTrainer(clubId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isClubManager(clubId) ||
+        (isMyClub(clubId) && clubRole(userData, clubId) == 'entraineur');
+    }
+
+    function isTrainerForUser(userData) {
+      return isPlatformAdmin() ||
+        (activeClubId() != '' &&
+         activeClubId() in userClubIds(userData) &&
+         isTrainer(activeClubId()));
+    }
+
+    function validCycle(data) {
+      return data.keys().hasOnly(['name', 'targetSessions', 'startDate', 'endDate', 'notes',
+                                  'createdBy', 'createdAt', 'updatedBy', 'updatedAt']) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 80 &&
+        data.targetSessions is int && data.targetSessions >= 1 && data.targetSessions <= 500 &&
+        data.startDate is string && data.startDate.size() == 10 &&
+        data.get('endDate', '') is string &&
+        data.get('notes', '') is string && data.get('notes', '').size() <= 1000 &&
+        data.updatedBy == request.auth.uid &&
+        data.updatedAt is number;
+    }
+
+    function validSchoolCourse(data) {
+      return data.keys().hasOnly(['id', 'clubId', 'name', 'startDate', 'startTime', 'endTime', 'sessionCount',
+                                  'skipHolidays', 'holidayZone', 'excludedDates', 'extraDates', 'dates',
+                                  'staffIds', 'students', 'sessionByDate', 'createdBy', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 80 &&
+        data.dates is list && data.dates.size() <= 80 &&
+        data.staffIds is list && data.staffIds.size() <= 50 &&
+        data.students is list && data.students.size() <= 200 &&
+        data.sessionByDate is map;
+    }
+
+    function canRunSchoolCourse(courseData) {
+      return isClubManager(courseData.clubId) ||
+        (isInstructor(courseData.clubId) && courseData.get('staffIds', []).hasAny([request.auth.uid]));
     }
 
     function isCoachForUser(userData) {
@@ -305,13 +355,13 @@ service cloud.firestore {
         request.resource.data.get('managerIds', []).hasAny([request.auth.uid]);
       allow update: if isAuth() &&
         ((isClubManager(clubId) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerIds', 'avatar', 'categories']) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerIds', 'avatar', 'categories', 'categoryColors', 'modules', 'cities']) &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['managerIds']) ||
            (request.resource.data.get('managerIds', []).size() > 0 &&
             (request.resource.data.managerIds.hasAny(resource.data.get('managerIds', [])) ||
              request.resource.data.managerIds.hasAny([request.auth.uid]))))) ||
          (isCoach(clubId) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avatar', 'categories'])));
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avatar', 'categories', 'categoryColors'])));
 
       match /members/{userId} {
         allow get, list: if isAuth() && isMyClub(clubId);
@@ -386,7 +436,7 @@ service cloud.firestore {
           activeClubId() in userClubIds(resource.data) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clubRoles']) &&
           request.resource.data.get('clubRoles', {}).diff(resource.data.get('clubRoles', {})).affectedKeys().hasOnly([activeClubId()]) &&
-          request.resource.data.get('clubRoles', {}).get(activeClubId(), 'athlete') in ['athlete', 'coach', 'gerant'])
+          request.resource.data.get('clubRoles', {}).get(activeClubId(), 'athlete') in ['athlete', 'initiateur', 'coach', 'entraineur', 'gerant'])
       );
 
       match /private/{privateDocumentId} {
@@ -450,6 +500,27 @@ service cloud.firestore {
         allow delete: if isAuth() && (request.auth.uid == userId || request.auth.uid == childUserId);
       }
 
+      // Cycles d'entraînement : le membre, les entraîneurs et gérants de son club (lecture aussi pour un parent lié)
+      match /cycles/{cycleId} {
+        allow read: if isAuth() &&
+          (request.auth.uid == userId ||
+           isTrainerForUser(get(/databases/$(database)/documents/users/$(userId)).data) ||
+           isLinkedParentWithSharedClub(userId));
+        allow create: if isAuth() &&
+          (request.auth.uid == userId ||
+           isTrainerForUser(get(/databases/$(database)/documents/users/$(userId)).data)) &&
+          validCycle(request.resource.data) &&
+          request.resource.data.createdBy == request.auth.uid;
+        allow update: if isAuth() &&
+          (request.auth.uid == userId ||
+           isTrainerForUser(get(/databases/$(database)/documents/users/$(userId)).data)) &&
+          validCycle(request.resource.data) &&
+          request.resource.data.get('createdBy', '') == resource.data.get('createdBy', '');
+        allow delete: if isAuth() &&
+          (request.auth.uid == userId ||
+           isTrainerForUser(get(/databases/$(database)/documents/users/$(userId)).data));
+      }
+
       match /linkedParents/{parentUserId} {
         allow get, list: if isAuth() &&
           (request.auth.uid == userId || request.auth.uid == parentUserId);
@@ -472,46 +543,99 @@ service cloud.firestore {
     match /blocks/{blockId} {
       allow get: if isAuth() &&
         isMyClub(resource.data.clubId) &&
-        isCoach(resource.data.clubId);
-      allow list: if isAuth() && isMyClub(resource.data.clubId) && isCoach(resource.data.clubId);
-      allow create: if isAuth() && isCoach(request.resource.data.clubId) &&
+        isInstructor(resource.data.clubId);
+      allow list: if isAuth() && isMyClub(resource.data.clubId) && isInstructor(resource.data.clubId);
+      allow create: if isAuth() && isInstructor(request.resource.data.clubId) &&
         request.resource.data.authorId == request.auth.uid &&
         request.resource.data.userId == request.auth.uid;
       allow update: if isAuth() && isMyClub(resource.data.clubId) &&
         (isClubManager(resource.data.clubId) ||
-         (isCoach(resource.data.clubId) &&
+         (isInstructor(resource.data.clubId) &&
           resource.data.get('authorId', resource.data.get('userId', request.auth.uid)) == request.auth.uid &&
           request.resource.data.clubId == resource.data.clubId &&
           request.resource.data.authorId == resource.data.get('authorId', request.auth.uid) &&
           request.resource.data.userId == resource.data.get('userId', request.auth.uid)));
       allow delete: if isAuth() && isMyClub(resource.data.clubId) &&
         (isClubManager(resource.data.clubId) ||
-         (isCoach(resource.data.clubId) &&
+         (isInstructor(resource.data.clubId) &&
           resource.data.get('authorId', resource.data.get('userId', request.auth.uid)) == request.auth.uid));
     }
 
     match /sessions/{sessionId} {
       allow get: if isAuth() && isMyClub(resource.data.clubId) &&
         (isClubManager(resource.data.clubId) ||
-         (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid) ||
+         (isInstructor(resource.data.clubId) && resource.data.authorId == request.auth.uid) ||
          resource.data.get('isShared', false) == true ||
          resource.data.get('assignedAthleteIds', []).hasAny([request.auth.uid]));
       allow list: if isAuth() && isMyClub(resource.data.clubId) &&
         (isClubManager(resource.data.clubId) ||
-         (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid) ||
+         (isInstructor(resource.data.clubId) && resource.data.authorId == request.auth.uid) ||
          resource.data.get('isShared', false) == true);
       // Only the sharing coach or a club manager can modify or remove a session.
-      allow create: if isAuth() && isCoach(request.resource.data.clubId) && request.resource.data.authorId == request.auth.uid;
+      allow create: if isAuth() && isInstructor(request.resource.data.clubId) && request.resource.data.authorId == request.auth.uid;
       allow update: if isAuth() && isMyClub(resource.data.clubId) &&
         request.resource.data.clubId == resource.data.clubId &&
         request.resource.data.authorId == resource.data.authorId &&
         ((isClubManager(resource.data.clubId) ||
-          (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid)) ||
+          (isInstructor(resource.data.clubId) && resource.data.authorId == request.auth.uid)) ||
          canCoachUpdateAssignedAthletes() ||
          canAthleteRevokeSessionAccess());
       allow delete: if isAuth() && isMyClub(resource.data.clubId) &&
         (isClubManager(resource.data.clubId) ||
-         (isCoach(resource.data.clubId) && resource.data.authorId == request.auth.uid));
+         (isInstructor(resource.data.clubId) && resource.data.authorId == request.auth.uid));
+    }
+
+    // École d'escalade : le gérant crée et supprime les cours et choisit les encadrants (staffIds) ;
+    // chaque encadrant gère ses cours (dates, élèves, séances prévues, appel).
+    match /schoolCourses/{courseId} {
+      allow read: if isAuth() && isMyClub(resource.data.clubId) && canRunSchoolCourse(resource.data);
+      allow create: if isAuth() &&
+        isClubManager(request.resource.data.clubId) &&
+        request.resource.data.id == courseId &&
+        request.resource.data.createdBy == request.auth.uid &&
+        validSchoolCourse(request.resource.data);
+      allow update: if isAuth() &&
+        request.resource.data.clubId == resource.data.clubId &&
+        validSchoolCourse(request.resource.data) &&
+        (isClubManager(resource.data.clubId) ||
+         (canRunSchoolCourse(resource.data) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['id', 'clubId', 'staffIds', 'createdBy', 'createdAt'])));
+      allow delete: if isAuth() && isClubManager(resource.data.clubId);
+
+      match /attendance/{date} {
+        allow read: if isAuth() &&
+          canRunSchoolCourse(get(/databases/$(database)/documents/schoolCourses/$(courseId)).data);
+        allow create, update: if isAuth() &&
+          canRunSchoolCourse(get(/databases/$(database)/documents/schoolCourses/$(courseId)).data) &&
+          request.resource.data.keys().hasOnly(['date', 'statuses', 'updatedBy', 'updatedByName', 'updatedAt']) &&
+          request.resource.data.date == date &&
+          request.resource.data.statuses is map &&
+          request.resource.data.updatedBy == request.auth.uid &&
+          request.resource.data.updatedAt is number;
+        allow delete: if isAuth() &&
+          isClubManager(get(/databases/$(database)/documents/schoolCourses/$(courseId)).data.clubId);
+      }
+    }
+
+    // Vue élève d'un cours (un document par élève et par cours) : nom, horaire, dates et SES présences.
+    // Séparée du cours pour ne jamais exposer les autres élèves ni les contacts des parents.
+    match /schoolStudentViews/{viewId} {
+      allow read: if isAuth() &&
+        (resource.data.userId == request.auth.uid ||
+         isLinkedParentInClub(resource.data.userId, resource.data.clubId) ||
+         canRunSchoolCourse(get(/databases/$(database)/documents/schoolCourses/$(resource.data.courseId)).data));
+      allow create, update: if isAuth() &&
+        viewId == request.resource.data.courseId + '_' + request.resource.data.userId &&
+        request.resource.data.keys().hasOnly(['userId', 'clubId', 'courseId', 'courseName', 'startDate',
+                                              'startTime', 'endTime', 'dates', 'attendance', 'updatedAt']) &&
+        request.resource.data.userId is string &&
+        request.resource.data.dates is list &&
+        request.resource.data.attendance is map &&
+        exists(/databases/$(database)/documents/schoolCourses/$(request.resource.data.courseId)) &&
+        get(/databases/$(database)/documents/schoolCourses/$(request.resource.data.courseId)).data.clubId == request.resource.data.clubId &&
+        canRunSchoolCourse(get(/databases/$(database)/documents/schoolCourses/$(request.resource.data.courseId)).data);
+      allow delete: if isAuth() &&
+        canRunSchoolCourse(get(/databases/$(database)/documents/schoolCourses/$(resource.data.courseId)).data);
     }
 
     // 5. Attributions : les élèves ne lisent que leurs séances et leurs bilans.
@@ -591,7 +715,7 @@ service cloud.firestore {
         ]) &&
         request.resource.data.requesterId == request.auth.uid &&
         isMyClub(request.resource.data.clubId) &&
-        request.resource.data.requestedRole in ['coach', 'gerant'] &&
+        request.resource.data.requestedRole in ['initiateur', 'coach', 'entraineur', 'gerant'] &&
         request.resource.data.status == 'pending';
       allow update: if isAuth() && isClubManager(resource.data.clubId) &&
         resource.data.status == 'pending' &&

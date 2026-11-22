@@ -20,6 +20,39 @@ const PUSH_CONFIG = {
 };
 
 const defaultCategories = ['Échauffement', 'Physique', 'Volume', 'Rési', 'Force', 'Lecture', 'Mental', 'Débrief'];
+
+// Couleur associée à chaque thème (pastille + liseré latéral des blocs)
+const DEFAULT_CATEGORY_COLORS = {
+    'Échauffement': '#F59E0B',
+    'Physique': '#EF4444',
+    'Volume': '#0EA5E9',
+    'Rési': '#8B5CF6',
+    'Force': '#DB2777',
+    'Lecture': '#10B981',
+    'Mental': '#6366F1',
+    'Débrief': '#64748B'
+};
+// Palette proposée à la création d'un thème
+const CATEGORY_COLOR_PALETTE = [
+    '#EF4444', '#F97316', '#F59E0B', '#84CC16', '#10B981', '#14B8A6',
+    '#0EA5E9', '#3B82F6', '#6366F1', '#8B5CF6', '#DB2777', '#64748B'
+];
+function getCategoryColor(category, club = null) {
+    if(!category) return null;
+    const sourceClub = club || (typeof getMyClubObj === 'function' && currentUser ? getMyClubObj() : null);
+    const saved = sourceClub && sourceClub.categoryColors && sourceClub.categoryColors[category];
+    if(saved && /^#[0-9a-fA-F]{6}$/.test(saved)) return saved;
+    if(DEFAULT_CATEGORY_COLORS[category]) return DEFAULT_CATEGORY_COLORS[category];
+    // Thème sans couleur enregistrée : couleur stable déduite de son nom
+    let hash = 0;
+    for(const char of String(category)) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    return CATEGORY_COLOR_PALETTE[hash % CATEGORY_COLOR_PALETTE.length];
+}
+// Attribut style à poser sur un bloc ou une pastille : style="--cat-color:#xxxxxx"
+function categoryColorStyle(category) {
+    const color = getCategoryColor(category);
+    return color ? ` style="--cat-color:${color};"` : '';
+}
 const themes1 = ["Dynamiques", "Statiques", "Talon", "Contre-Pointe", "Equilibre", "Gestes en dévers", "Opposition", "Compression", "Bacs", "Réglettes", "Pinces", "Bi-doigt"];
 const themes2 = ["Force bras", "Force doigts", "Endurance Phys.", "Souplesse", "Position pieds", "Position corps", "Coordination", "Gestion mentale", "Lecture", "En tête", "Endu. mentale"];
 
@@ -77,14 +110,48 @@ function escapeHtml(value) {
     }[char]));
 }
 
+// === ICÔNES (même style trait que les onglets ; remplacent les émojis) ===
+const UI_ICON_PATHS = {
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4c2.1.7 3.5 2.8 3.5 5.6"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+    lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    check: '<path d="M20 6L9 17l-5-5"/>',
+    close: '<path d="M18 6L6 18M6 6l12 12"/>',
+    'chevron-down': '<path d="M6 9l6 6 6-6"/>',
+    'arrow-left': '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+    'arrow-up': '<path d="M12 19V5M5 12l7-7 7 7"/>',
+    'arrow-down': '<path d="M12 5v14M19 12l-7 7-7-7"/>',
+    undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    switch: '<path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/>',
+    chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.8A8 8 0 1 1 21 12z"/>',
+    expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.3-2.4 3.8M12 17v.01"/>'
+};
+function uiIcon(name, extraClass = '') {
+    const paths = UI_ICON_PATHS[name];
+    if(!paths) return '';
+    return `<svg class="ui-icon${extraClass ? ' ' + extraClass : ''}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths}</svg>`;
+}
+
 const appDialogQueue = [];
 let activeAppDialog = null;
 let appDialogPreviousFocus = null;
 
-function alert(message) {
-    appDialogQueue.push({ type: 'alert', message: String(message) });
+// options (facultatif) : { title, icon: 'mail', note } — note = encart mis en avant sous le message
+function alert(message, options = {}) {
+    appDialogQueue.push({ type: 'alert', message: String(message), options });
     showNextAppDialog();
 }
+
+const APP_DIALOG_ICONS = {
+    mail: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg>'
+};
 
 function showAppConfirm(message) {
     return new Promise(resolve => {
@@ -132,9 +199,17 @@ function showNextAppDialog() {
     appDialogPreviousFocus = document.activeElement;
     const type = activeAppDialog.type;
     const isQuestion = type !== 'alert';
-    document.getElementById('app-dialog-title').textContent = type === 'choice' ? 'Choisir' : isQuestion ? 'Confirmation' : 'Information';
-    document.getElementById('app-dialog-icon').textContent = isQuestion ? '?' : 'ℹ';
+    const options = activeAppDialog.options || {};
+    document.getElementById('app-dialog-title').textContent = options.title || (type === 'choice' ? 'Choisir' : isQuestion ? 'Confirmation' : 'Information');
+    const iconEl = document.getElementById('app-dialog-icon');
+    if(options.icon && APP_DIALOG_ICONS[options.icon]) iconEl.innerHTML = APP_DIALOG_ICONS[options.icon];
+    else iconEl.innerHTML = uiIcon(isQuestion ? 'help' : 'info');
     document.getElementById('app-dialog-message').textContent = activeAppDialog.message;
+    const noteEl = document.getElementById('app-dialog-note');
+    if(noteEl) {
+        noteEl.textContent = options.note || '';
+        noteEl.hidden = !options.note;
+    }
     const input = document.getElementById('app-dialog-input');
     if(input) {
         input.hidden = type !== 'prompt';
@@ -578,9 +653,49 @@ function getClubRole(user = currentUser, clubId = currentUser && currentUser.clu
     return user.role === 'coach' && legacyCoachClubId === clubId ? 'coach' : 'athlete';
 }
 
+// Rôles du club, du moins au plus étendu : chaque rôle a les droits de ceux en dessous.
+//   athlete    : ses séances, son profil
+//   initiateur : + crée des séances, encadre l'école d'escalade (pas d'accès aux profils des membres)
+//   coach      : + profils des membres, attribution de séances aux membres
+//   entraineur : + cycles d'entraînement des membres
+//   gerant     : + gestion du club, des rôles et de l'école d'escalade
+const CLUB_ROLE_RANK = { athlete: 0, initiateur: 1, coach: 2, entraineur: 3, gerant: 4 };
+const CLUB_ROLES = Object.keys(CLUB_ROLE_RANK);
+const REQUESTABLE_ROLES = ['initiateur', 'coach', 'entraineur', 'gerant'];
+
+function getClubRoleRank(user = currentUser, clubId = currentUser && currentUser.clubId) {
+    return CLUB_ROLE_RANK[getClubRole(user, clubId)] || 0;
+}
+
+// --- Activités du club : « Entraînement » et/ou « École d'escalade » ---
+// Clubs existants (sans réglage) : les deux activités sont actives.
+function getClubModules(clubId = currentUser && currentUser.clubId) {
+    const club = allClubs.find(item => item.id === clubId);
+    const modules = club && club.modules;
+    if(!modules || (modules.training === false && modules.school === false)) return { training: true, school: true };
+    return { training: modules.training !== false, school: modules.school !== false };
+}
+function isTrainingEnabled(clubId = currentUser && currentUser.clubId) {
+    return getClubModules(clubId).training;
+}
+function isSchoolEnabled(clubId = currentUser && currentUser.clubId) {
+    return getClubModules(clubId).school;
+}
+
+// Club « école seule » : les fonctions d'entraînement (profils des membres, attributions, cycles)
+// n'existent pas ; chacun, gérant compris, a au plus les droits d'un initiateur.
 function hasCoachRights(user = currentUser, clubId = currentUser && currentUser.clubId) {
-    const role = getClubRole(user, clubId);
-    return role === 'coach' || role === 'gerant';
+    return isTrainingEnabled(clubId) && getClubRoleRank(user, clubId) >= CLUB_ROLE_RANK.coach;
+}
+
+// Initiateur et plus : création de séances / blocs, encadrement de l'école d'escalade
+function canCreateSessions(user = currentUser, clubId = currentUser && currentUser.clubId) {
+    return getClubRoleRank(user, clubId) >= CLUB_ROLE_RANK.initiateur;
+}
+
+// Entraîneur et gérant : cycles d'entraînement de tous les membres
+function canManageCycles(user = currentUser, clubId = currentUser && currentUser.clubId) {
+    return isTrainingEnabled(clubId) && getClubRoleRank(user, clubId) >= CLUB_ROLE_RANK.entraineur;
 }
 
 function isPlatformAdmin(user = currentUser) {
@@ -598,11 +713,16 @@ function isClubManager(user = currentUser, clubId = currentUser && currentUser.c
 function canManageClubSession(session) {
     if(!currentUser || !session || session.clubId !== currentUser.clubId) return false;
     return isClubManager(currentUser, session.clubId) ||
-        (hasCoachRights(currentUser, session.clubId) && session.authorId === currentUser.id);
+        (canCreateSessions(currentUser, session.clubId) && session.authorId === currentUser.id);
 }
 
 function getRoleLabel(role) {
-    return role === 'gerant' ? 'Gérant du club' : role === 'coach' ? 'Coach' : 'Athlète';
+    return {
+        gerant: 'Gérant du club',
+        entraineur: 'Entraîneur',
+        coach: 'Coach',
+        initiateur: 'Initiateur'
+    }[role] || 'Athlète';
 }
 
 function getEmptyProfile() {
@@ -624,6 +744,7 @@ function renderProfileClubs() {
         <div class="club-membership-item">
             <div><strong>${escapeHtml(club.name)}</strong>${currentUser.clubId === club.id ? '<span class="club-current-badge">Club actif</span>' : ''}</div>
             ${isViewingChild ? '' : `<div class="club-membership-actions">
+                ${currentUser.clubId === club.id && isClubManager() ? `<button class="btn-outline" onclick="openClubSettings()">${CLUB_SETTINGS_ICON}Paramètres du club</button>` : ''}
                 ${currentUser.clubId !== club.id ? `<button class="btn-outline" onclick="setActiveClub('${escapeHtml(club.id)}')">Utiliser ce club</button>` : ''}
                 <button class="btn-outline" style="color:var(--danger);" onclick="leaveClub('${escapeHtml(club.id)}')">Quitter</button>
             </div>`}
@@ -635,7 +756,7 @@ function renderProfileClubs() {
     const availableClubs = allClubs.filter(club => !clubIds.includes(club.id));
     clubSelect.innerHTML = '<option value="">Choisir un club</option>' +
         availableClubs.map(club => `<option value="${escapeHtml(club.id)}">${escapeHtml(club.name)}</option>`).join('') +
-        '<option value="_new_">＋ Créer un nouveau club…</option>';
+        '<option value="_new_">Créer un nouveau club…</option>';
     if([...availableClubs, { id: '_new_' }].some(club => club.id === selectedClubId)) {
         clubSelect.value = selectedClubId;
     }
@@ -661,6 +782,7 @@ function renderMyRoleRequests() {
     if(!section || !status || !submit) return;
 
     section.style.display = isClubManager() || !currentUser.clubId ? 'none' : 'block';
+    enhanceRoleChoices(document.getElementById('role-request-select'));
     const pending = clubRoleRequests.find(request => request.status === 'pending');
     if(pending) {
         status.textContent = `Demande en attente pour le rôle « ${getRoleLabel(pending.requestedRole)} ».`;
@@ -677,7 +799,7 @@ function renderMyRoleRequests() {
 async function submitRoleRequest() {
     if(!currentUser.clubId || isClubManager()) return;
     const requestedRole = document.getElementById('role-request-select').value;
-    if(!['coach', 'gerant'].includes(requestedRole)) return alert("Sélectionnez un rôle valide.");
+    if(!REQUESTABLE_ROLES.includes(requestedRole)) return alert("Sélectionnez un rôle valide.");
     if(clubRoleRequests.some(request => request.status === 'pending')) {
         return alert("Vous avez déjà une demande de rôle en attente pour ce club.");
     }
@@ -698,13 +820,13 @@ async function submitRoleRequest() {
     }
 }
 
-async function updateClubMemberRole(memberId) {
+async function updateClubMemberRole(memberId, selectId = 'view-athlete-role') {
     if(!isClubManager()) return alert("Seul un gérant peut modifier les rôles du club.");
     memberId = memberId || viewedAthleteId;
     const member = clubMembers.find(user => user.id === memberId);
-    const select = document.getElementById('view-athlete-role');
+    const select = document.getElementById(selectId);
     const role = select && select.value;
-    if(!member || !['athlete', 'coach', 'gerant'].includes(role)) return alert("Membre ou rôle invalide.");
+    if(!member || !CLUB_ROLES.includes(role)) return alert("Membre ou rôle invalide.");
 
     const oldRole = getClubRole(member, currentUser.clubId);
     if(memberId === currentUser.id && oldRole === 'gerant' && role !== 'gerant') {
@@ -743,6 +865,7 @@ async function updateClubMemberRole(memberId) {
             });
         }
         await batch.commit();
+        if(selectId === 'member-role-select') closeModal('modal-member-role');
         alert(`Rôle de ${member.username} mis à jour : ${getRoleLabel(role)}.`);
     } catch(error) {
         console.error("Erreur de modification du rôle:", error);
@@ -758,7 +881,7 @@ async function resolveRoleRequest(requestId, status) {
     try {
         const batch = db.batch();
         if(status === 'approved') {
-            if(!['coach', 'gerant'].includes(request.requestedRole)) return alert("Le rôle demandé n'est pas valide.");
+            if(!REQUESTABLE_ROLES.includes(request.requestedRole)) return alert("Le rôle demandé n'est pas valide.");
             const member = clubMembers.find(user => user.id === request.requesterId);
             if(!member || !getUserClubIds(member).includes(currentUser.clubId)) {
                 return alert("Ce membre ne fait plus partie du club.");
@@ -838,16 +961,29 @@ async function joinClub() {
     }
 }
 
-async function createClub() {
-    if(originalParentUser) return alert("Revenez au compte parent pour créer un club.");
-    const nameInput = document.getElementById('new-club-name');
-    const name = nameInput.value.trim();
-    if(!name) return alert("Saisissez le nom du club.");
-    if(name.length > 80) return alert("Le nom du club ne peut pas dépasser 80 caractères.");
+function validateNewClubName(name) {
+    if(!name) return "Saisissez le nom du club.";
+    if(name.length > 80) return "Le nom du club ne peut pas dépasser 80 caractères.";
     const normalizedName = name.toLocaleLowerCase('fr-FR');
     if(allClubs.some(club => String(club.name || '').trim().toLocaleLowerCase('fr-FR') === normalizedName)) {
-        return alert("Un club portant ce nom existe déjà.");
+        return "Un club portant ce nom existe déjà.";
     }
+    return '';
+}
+
+// « Créer le club » ouvre la fenêtre des paramètres (photo, villes, activités) ;
+// la création elle-même a lieu à l'enregistrement de cette fenêtre.
+async function createClub(settings = null) {
+    if(originalParentUser) return alert("Revenez au compte parent pour créer un club.");
+    const nameInput = document.getElementById('new-club-name');
+    if(!settings) {
+        const error = validateNewClubName(nameInput.value.trim());
+        if(error) return alert(error);
+        return openClubSettings('create', nameInput.value.trim());
+    }
+    const name = settings.name;
+    const error = validateNewClubName(name);
+    if(error) return alert(error);
 
     const submitButton = document.getElementById('create-club-submit');
     if(submitButton.disabled) return;
@@ -858,7 +994,10 @@ async function createClub() {
             id: clubRef.id,
             name,
             categories: defaultCategories,
-            managerIds: [currentUser.id]
+            managerIds: [currentUser.id],
+            cities: settings.cities,
+            modules: settings.modules,
+            ...(settings.avatar ? { avatar: settings.avatar } : {})
         };
         const clubIds = [...new Set([...getUserClubIds(), club.id])];
         const batch = db.batch();
@@ -874,6 +1013,7 @@ async function createClub() {
         currentUser.clubIds = clubIds;
         currentUser.clubId = club.id;
         nameInput.value = '';
+        closeModal('modal-club-settings');
         startRealtimeListeners(club.id);
         showApp();
         alert(`Le club « ${name} » a été créé. Vous en êtes le gérant.`);
@@ -907,7 +1047,7 @@ async function leaveClub(clubId) {
             startRealtimeListeners(nextClubId);
         }
         if(wasActiveClub && nextClubId) showApp();
-        else if(wasActiveClub) switchTab('athlete-profile');
+        else if(wasActiveClub) switchTab('settings');
         renderProfileClubs();
     } catch(error) {
         console.error("Erreur départ du club:", error);
@@ -924,13 +1064,16 @@ async function startAuthenticatedSession(user) {
         if(!user.emailVerified) {
             document.getElementById('loader-screen').style.display = 'none';
             await auth.signOut();
-            alert("Veuillez valider votre adresse email en cliquant sur le lien reçu, puis reconnectez-vous.");
+            showEmailSentDialog("Veuillez valider votre adresse e-mail en cliquant sur le lien reçu, puis reconnectez-vous.", 'Adresse e-mail à confirmer');
             initAuthUI();
             return;
         }
 
-        const tokenResult = await user.getIdTokenResult(true);
-        const userSnapshot = await db.collection('users').doc(user.uid).get();
+        // Requêtes indépendantes lancées en parallèle (chaque aller-retour réseau compte sur mobile)
+        const [tokenResult, userSnapshot] = await Promise.all([
+            user.getIdTokenResult(true),
+            db.collection('users').doc(user.uid).get()
+        ]);
         if(!userSnapshot.exists) {
             document.getElementById('loader-screen').style.display = 'none';
             await auth.signOut();
@@ -941,14 +1084,24 @@ async function startAuthenticatedSession(user) {
 
         currentUser = await migrateLegacyPrivateData({ ...userSnapshot.data(), id: userSnapshot.id });
         currentUser.isPlatformAdmin = tokenResult.claims.admin === true;
-        await syncClubDirectory(currentUser);
-        await recordLoginUsageEvent();
+        if(user.email && currentUser.email !== user.email) {
+            // L'adresse a été changée (lien de confirmation cliqué) : on met à jour le profil privé
+            currentUser.email = user.email;
+            savePrivateProfile(user.uid, { email: user.email })
+                .catch(error => console.error("Synchronisation de l'adresse e-mail impossible:", error));
+        }
+        // L'annuaire du club se met à jour pendant le chargement des liens parent-enfant ;
+        // la statistique de connexion part en arrière-plan (elle gère déjà ses erreurs).
+        const directorySync = syncClubDirectory(currentUser).then(() => null, error => error);
+        recordLoginUsageEvent();
         currentUserParentCode = null;
         originalParentUser = null;
         let parentLinkRulesAvailable = true;
         try {
-            linkedChildIds = await loadLinkedChildIds(user.uid);
-            linkedParentIds = await loadLinkedParentIds(user.uid);
+            [linkedChildIds, linkedParentIds] = await Promise.all([
+                loadLinkedChildIds(user.uid),
+                loadLinkedParentIds(user.uid)
+            ]);
         } catch(error) {
             if(error.code !== 'permission-denied') throw error;
             linkedChildIds = [];
@@ -969,6 +1122,9 @@ async function startAuthenticatedSession(user) {
                 alert("La génération du code parent sera disponible après la publication des nouvelles règles Firebase.");
             }
         }
+
+        const directoryError = await directorySync;
+        if(directoryError) throw directoryError;
 
         const activeClubId = currentUser.clubId || getUserClubIds(currentUser)[0] || null;
         if(currentUser.clubId && !currentUser.primaryClubId) {
@@ -1007,8 +1163,15 @@ async function startAuthenticatedSession(user) {
 // === INITIALISATION ET ÉCOUTEURS TEMPS RÉEL ===
 function initApp() {
     db.collection('clubs').onSnapshot(snap => {
+        const modulesBefore = currentUser ? JSON.stringify(getClubModules(currentUser.clubId)) : null;
         allClubs = snap.docs.map(d => ({ ...d.data(), id: d.id }));
         if(document.getElementById('auth-screen').style.display !== 'none') updateAuthClubList();
+        else if(currentUser && !authBootstrapInProgress && currentUser.clubId &&
+                modulesBefore !== JSON.stringify(getClubModules(currentUser.clubId))) {
+            // Les activités du club ont changé : on recharge les droits et les onglets
+            startRealtimeListeners(currentUser.clubId);
+            showApp();
+        }
         else refreshCurrentTab();
     }, error => {
         console.error("Erreur de chargement des clubs:", error);
@@ -1268,7 +1431,7 @@ function startRealtimeListeners(clubId) {
         ));
     }
 
-    if(hasCoachRights(currentUser, clubId)) {
+    if(canCreateSessions(currentUser, clubId)) {
         listeners.push(db.collection('blocks').where('clubId', '==', clubId).onSnapshot(snap => {
             if(listenerGeneration !== realtimeListenerGeneration || !auth.currentUser) return;
             clubBlocks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1290,7 +1453,7 @@ function startRealtimeListeners(clubId) {
             snap => handleSessionsSnapshot(snap, 'manager'),
             error => handleRealtimeListenerError("les séances du club", listenerGeneration, error)
         ));
-    } else if(hasCoachRights(currentUser, clubId)) {
+    } else if(canCreateSessions(currentUser, clubId)) {
         listeners.push(sessionsCollection.where('clubId', '==', clubId)
             .where('authorId', '==', currentUser.id).onSnapshot(
                 snap => handleSessionsSnapshot(snap, 'coach'),
@@ -1308,6 +1471,10 @@ function startRealtimeListeners(clubId) {
                 error => handleRealtimeListenerError("les séances partagées du club", listenerGeneration, error)
             ));
     }
+
+    // École d'escalade (gérant : tous les cours ; encadrants : leurs cours) et cycles personnels
+    startSchoolListeners(clubId, listenerGeneration);
+    startOwnCyclesListener(listenerGeneration);
 
     let assignmentsQuery = db.collection('assignments').where('clubId', '==', clubId);
     if(!hasCoachRights(currentUser, clubId)) assignmentsQuery = assignmentsQuery.where('athleteId', '==', currentUser.id);
@@ -1371,6 +1538,8 @@ function refreshCurrentTab() {
     if(document.getElementById('athlete-club-members-space').classList.contains('active')) renderAthleteClubMembers();
     if(document.getElementById('athlete-club-sessions-space').classList.contains('active')) renderAthleteClubSessions();
     if(document.getElementById('athlete-profile-space').classList.contains('active')) renderAthleteProfile();
+    if(document.getElementById('settings-space').classList.contains('active')) renderSettings();
+    if(document.getElementById('school-space').classList.contains('active')) renderSchool();
     const athleteProfileModal = document.getElementById('modal-view-athlete');
     if(athleteProfileModal && athleteProfileModal.style.display === 'flex' &&
        document.getElementById('coach-ath-view-historique').style.display !== 'none') {
@@ -1433,7 +1602,7 @@ async function publishToGlobalLibrary(id) {
 async function importGlobalLibrarySession(entryId) {
     const entry = globalLibraryEntries.find(item => item.id === entryId);
     if(!entry) return alert("Cette séance n'est plus disponible.");
-    if(!hasCoachRights()) return alert("Seuls les coachs peuvent importer une séance.");
+    if(!canCreateSessions()) return alert("Seuls les encadrants peuvent importer une séance.");
     try {
         const stamp = Date.now();
         const batch = db.batch();
@@ -1452,7 +1621,7 @@ async function importGlobalLibrarySession(entryId) {
         });
         const newSession = {
             id: 'sess_' + stamp,
-            name: entry.name || 'Séance importée',
+            name: makeUniqueSessionName(entry.name || 'Séance importée', '', false),
             blocks: blockIds,
             clubId: currentUser.clubId,
             authorId: currentUser.id,
@@ -1531,7 +1700,7 @@ function renderGlobalLibrarySessions() {
     return entries.map(entry => {
         const safeId = escapeHtml(entry.id);
         const deleteButton = canManageGlobalLibraryEntry(entry)
-            ? `<button class="btn-icon" title="Modifier" onclick="editGlobalLibraryEntry('${safeId}')">✏️</button><button class="btn-icon" title="Retirer de la bibliothèque" style="color:var(--danger);" onclick="deleteGlobalLibraryEntry('${safeId}')">🗑️</button>`
+            ? `<button class="btn-icon" title="Modifier" onclick="editGlobalLibraryEntry('${safeId}')">${uiIcon('edit')}</button><button class="btn-icon" title="Retirer de la bibliothèque" style="color:var(--danger);" onclick="deleteGlobalLibraryEntry('${safeId}')">${uiIcon('trash')}</button>`
             : '';
         const author = [entry.authorName, entry.clubName].filter(Boolean).map(escapeHtml).join(' · ');
         const blocksList = (entry.blocks || []).map(block =>
@@ -1765,7 +1934,7 @@ function updateAuthClubList() {
     const currentVal = select.value;
     select.innerHTML = '<option value="">-- Choisir un club --</option>';
     allClubs.forEach(c => select.innerHTML += `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`);
-    select.innerHTML += `<option value="_new_" style="font-weight:700; color:var(--ffme-blue-dark);">➕ Créer un nouveau club...</option>`;
+    select.innerHTML += `<option value="_new_" style="font-weight:700; color:var(--ffme-blue-dark);">Créer un nouveau club…</option>`;
     if(currentVal) select.value = currentVal;
     enhanceClubSelect(select);
 }
@@ -1774,7 +1943,7 @@ function updateAuthClubList() {
 // Remplace visuellement un <select> de clubs par une liste avec la photo de chaque club.
 // Le <select> d'origine reste la source de vérité (caché) : son événement « change » est déclenché à chaque choix.
 function getClubPickerAvatarHtml(value) {
-    if(value === '_new_') return '<span class="club-picker-avatar club-picker-avatar-new" aria-hidden="true">+</span>';
+    if(value === '_new_') return '<span class="club-picker-avatar club-picker-avatar-new" aria-hidden="true">' + uiIcon('plus') + '</span>';
     const club = allClubs.find(item => item.id === value);
     if(!club) return '<span class="club-picker-avatar club-picker-avatar-empty" aria-hidden="true"></span>';
     if(club.avatar) return `<img class="club-picker-avatar" src="${escapeHtml(club.avatar)}" alt="">`;
@@ -1807,7 +1976,7 @@ function enhanceClubSelect(select) {
         <button type="button" class="club-picker-toggle" aria-haspopup="listbox" aria-expanded="false">
             ${getClubPickerAvatarHtml(selected ? selected.value : '')}
             <span class="club-picker-label${selected && selected.value ? '' : ' is-placeholder'}">${escapeHtml(placeholder)}</span>
-            <span class="club-picker-caret" aria-hidden="true">▾</span>
+            <span class="club-picker-caret" aria-hidden="true">${uiIcon('chevron-down')}</span>
         </button>
         <div class="club-picker-list" role="listbox" hidden>
             ${choices.map(option => `
@@ -1857,6 +2026,171 @@ document.addEventListener('keydown', event => {
     if(event.key === 'Escape') closeAllClubPickers();
 });
 
+
+// === SÉLECTEURS « MAISON » (remplacent visuellement les menus déroulants natifs) ===
+// Le <select> d'origine reste caché et sert de source de vérité : chaque choix met à jour sa valeur
+// et déclenche son événement « change », donc les onchange="…" existants continuent de fonctionner.
+// Après avoir modifié le <select> par le code (options ou valeur), il suffit de rappeler la fonction.
+
+// Panneau qui s'ouvre sous un bouton, avec recherche facultative.
+// options : { search, searchPlaceholder, placeholder, avatar(value), detail(value), keepPlaceholder, emptyText }
+function enhanceSelect(select, options) {
+    if(!select) return;
+    if(options === undefined) options = select._pickerOptions || {};
+    select._pickerOptions = options;
+    let picker = select.nextElementSibling;
+    if(!picker || !picker.classList.contains('ui-picker')) {
+        picker = document.createElement('div');
+        picker.className = 'club-picker ui-picker';
+        select.insertAdjacentElement('afterend', picker);
+    }
+    select.classList.add('club-picker-native');
+    select.tabIndex = -1;
+    select.setAttribute('aria-hidden', 'true');
+
+    const all = [...select.options];
+    const selected = options.keepPlaceholder ? null : all.find(option => option.value && option.value === select.value);
+    const placeholder = options.placeholder || (all[0] && !all[0].value ? all[0].textContent.trim() : 'Choisir…');
+    // allowEmpty : propose aussi la valeur vide (ex. « Aucune séance ») avec ce libellé
+    const choices = all.filter(option => option.value || options.allowEmpty);
+    const avatar = value => options.avatar ? options.avatar(value) : '';
+    const detail = value => options.detail ? options.detail(value) : '';
+
+    picker.innerHTML = `
+        <button type="button" class="club-picker-toggle" aria-haspopup="listbox" aria-expanded="false"${select.disabled ? ' disabled' : ''}>
+            ${selected ? avatar(selected.value) : (options.keepPlaceholder ? `<span class="ui-picker-lead">${uiIcon('plus')}</span>` : '')}
+            <span class="club-picker-label${selected ? '' : ' is-placeholder'}">${escapeHtml(selected ? selected.textContent.trim() : (options.allowEmpty && !select.value ? options.allowEmpty : placeholder))}</span>
+            <span class="club-picker-caret" aria-hidden="true">${uiIcon('chevron-down')}</span>
+        </button>
+        <div class="club-picker-list" role="listbox" hidden>
+            ${options.search ? `<div class="ui-picker-search"><input type="search" class="form-control" placeholder="${escapeHtml(options.searchPlaceholder || 'Rechercher…')}" aria-label="${escapeHtml(options.searchPlaceholder || 'Rechercher')}"></div>` : ''}
+            ${choices.map(option => {
+                const extra = detail(option.value);
+                return `<button type="button" role="option" class="club-picker-option${option.value === select.value && !options.keepPlaceholder ? ' selected' : ''}${option.value === '_new_' ? ' is-create' : ''}" aria-selected="${option.value === select.value}" data-value="${escapeHtml(option.value)}" data-search="${escapeHtml(option.textContent.trim().toLowerCase())}">
+                    ${option.value === '_new_' ? `<span class="club-picker-avatar club-picker-avatar-new" aria-hidden="true">${uiIcon('plus')}</span>` : avatar(option.value)}
+                    <span class="ui-picker-text"><span>${escapeHtml(option.value ? option.textContent.trim() : (options.allowEmpty || option.textContent.trim()))}</span>${extra ? `<small>${escapeHtml(extra)}</small>` : ''}</span>
+                    ${option.value === select.value && !options.keepPlaceholder ? `<span class="ui-picker-check">${uiIcon('check')}</span>` : ''}
+                </button>`;
+            }).join('')}
+            <p class="club-picker-empty"${choices.length ? ' hidden' : ''}>${escapeHtml(options.emptyText || 'Aucun choix disponible.')}</p>
+        </div>`;
+
+    const toggle = picker.querySelector('.club-picker-toggle');
+    const list = picker.querySelector('.club-picker-list');
+    const searchInput = picker.querySelector('.ui-picker-search input');
+    toggle.addEventListener('click', event => {
+        event.stopPropagation();
+        const willOpen = list.hidden;
+        closeAllClubPickers();
+        list.hidden = !willOpen;
+        toggle.setAttribute('aria-expanded', String(willOpen));
+        if(willOpen) {
+            if(searchInput) searchInput.focus();
+            else {
+                const current = list.querySelector('.club-picker-option.selected') || list.querySelector('.club-picker-option');
+                if(current) current.focus();
+            }
+        }
+    });
+    list.addEventListener('click', event => event.stopPropagation());
+    if(searchInput) {
+        searchInput.addEventListener('input', () => {
+            const query = searchInput.value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            let visible = 0;
+            list.querySelectorAll('.club-picker-option').forEach(button => {
+                const text = button.dataset.search.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const match = !query || text.includes(query);
+                button.hidden = !match;
+                if(match) visible++;
+            });
+            list.querySelector('.club-picker-empty').hidden = visible > 0;
+        });
+        searchInput.addEventListener('keydown', event => {
+            if(event.key === 'Enter') {
+                event.preventDefault();
+                const first = [...list.querySelectorAll('.club-picker-option')].find(button => !button.hidden);
+                if(first) first.click();
+            }
+        });
+    }
+    list.querySelectorAll('.club-picker-option').forEach(optionButton => {
+        optionButton.addEventListener('click', event => {
+            event.stopPropagation();
+            select.value = optionButton.dataset.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            enhanceSelect(select);
+            const newToggle = picker.querySelector('.club-picker-toggle');
+            if(newToggle) newToggle.focus();
+        });
+    });
+}
+
+// Choix affichés directement : boutons segmentés (variant « pills ») ou cartes (variant « cards »).
+// options : { variant, label, detail(value), icon(value) }
+function enhanceChoices(select, options) {
+    if(!select) return;
+    if(options === undefined) options = select._choiceOptions || {};
+    select._choiceOptions = options;
+    let group = select.nextElementSibling;
+    if(!group || !group.classList.contains('choice-group')) {
+        group = document.createElement('div');
+        select.insertAdjacentElement('afterend', group);
+    }
+    group.className = `choice-group choice-${options.variant || 'pills'}${select.disabled ? ' is-disabled' : ''}`;
+    group.setAttribute('role', 'radiogroup');
+    if(options.label) group.setAttribute('aria-label', options.label);
+    select.classList.add('club-picker-native');
+    select.tabIndex = -1;
+    select.setAttribute('aria-hidden', 'true');
+
+    const choices = [...select.options].filter(option => option.value !== '' && !option.hidden);
+    group.innerHTML = choices.map(option => {
+        const extra = options.detail ? options.detail(option.value) : '';
+        const isSelected = option.value === select.value;
+        return `<button type="button" role="radio" class="choice-option${isSelected ? ' selected' : ''}" aria-checked="${isSelected}" data-value="${escapeHtml(option.value)}"${select.disabled ? ' disabled' : ''}>
+            ${options.icon ? options.icon(option.value) : ''}
+            <span class="choice-label">${escapeHtml(option.textContent.trim())}</span>
+            ${extra ? `<small class="choice-detail">${escapeHtml(extra)}</small>` : ''}
+        </button>`;
+    }).join('') || '<p class="club-picker-empty">Aucun choix disponible.</p>';
+    group.querySelectorAll('.choice-option').forEach(button => {
+        button.addEventListener('click', () => {
+            if(select.disabled || select.value === button.dataset.value) return;
+            select.value = button.dataset.value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            enhanceChoices(select);
+        });
+    });
+}
+
+// Pastille d'un membre (photo ou initiale) et pastille de couleur d'un thème, pour les sélecteurs
+function memberPickerAvatar(userId) {
+    const member = clubMembers.find(user => user.id === userId);
+    if(member && member.avatar) return `<img class="club-picker-avatar" src="${escapeHtml(member.avatar)}" alt="">`;
+    return `<span class="club-picker-avatar" aria-hidden="true">${escapeHtml(((member && member.username) || '?').charAt(0).toUpperCase())}</span>`;
+}
+function categoryPickerDot(category) {
+    const color = getCategoryColor(category);
+    return `<span class="ui-picker-dot" style="--cat-color:${color || 'var(--primary)'};" aria-hidden="true"></span>`;
+}
+
+const ROLE_DESCRIPTIONS = {
+    athlete: 'Ses séances et son profil',
+    initiateur: "Crée des séances, encadre l'école d'escalade",
+    coach: 'Profils des membres, attribution des séances',
+    entraineur: "Comme le coach, plus les cycles d'entraînement",
+    gerant: "Gestion du club, des rôles et de l'école"
+};
+function enhanceRoleChoices(select) {
+    if(!select) return;
+    // Club « école seule » : les rôles d'entraînement (coach, entraîneur) ne sont pas proposés
+    const training = isTrainingEnabled();
+    [...select.options].forEach(option => {
+        option.hidden = !training && ['coach', 'entraineur'].includes(option.value);
+    });
+    enhanceChoices(select, { variant: 'cards', label: 'Rôle', detail: role => ROLE_DESCRIPTIONS[role] || '' });
+}
+
 function renderFilterTags(containerId, categories, activeCategory, onSelect) {
     const container = document.getElementById(containerId);
     if(!container) return;
@@ -1872,6 +2206,24 @@ function renderFilterTags(containerId, categories, activeCategory, onSelect) {
 }
 
 // === AUTHENTIFICATION ===
+// Fenêtre « e-mail envoyé » avec le rappel de vérifier les spams bien en évidence
+function showEmailSentDialog(message, title = 'Vérifiez vos e-mails') {
+    alert(message, {
+        title,
+        icon: 'mail',
+        note: "Vous ne trouvez pas l'e-mail ? Regardez dans vos spams / courriers indésirables : il arrive parfois là."
+    });
+}
+
+// Case « voir le mot de passe » : affiche / masque un ou plusieurs champs (ids séparés par des virgules)
+function togglePasswordVisibility(inputIds, checkbox) {
+    const show = Boolean(checkbox && checkbox.checked);
+    inputIds.split(',').forEach(id => {
+        const input = document.getElementById(id.trim());
+        if(input) input.type = show ? 'text' : 'password';
+    });
+}
+
 function initAuthUI() {
     document.getElementById('app-content').style.display = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
@@ -1894,17 +2246,30 @@ function checkDobForParentCode() {
 async function register() {
     const email = document.getElementById('reg-email').value.trim();
     const password = document.getElementById('reg-password').value;
+    const passwordConfirm = document.getElementById('reg-password-confirm').value;
     const username = document.getElementById('reg-username').value.trim();
     const dob = document.getElementById('reg-dob').value;
     const role = 'athlete';
     let clubId = document.getElementById('reg-club').value;
 
-    if (!email || !password || !username || !dob) return alert("Veuillez remplir tous les champs.");
+    if (!email || !password || !passwordConfirm || !username || !dob) return alert("Veuillez remplir tous les champs.");
+    if (password.length < 6) return alert("Le mot de passe doit contenir au moins 6 caractères.");
+    if (password !== passwordConfirm) return alert("Les deux mots de passe ne correspondent pas. Vérifiez votre saisie.");
     
     let newClubName = '';
+    let newClubCities = [];
+    let newClubModules = { training: true, school: false };
     if (clubId === '_new_') {
         newClubName = document.getElementById('reg-new-club').value.trim();
         if (!newClubName) return alert("Nom du club requis.");
+        newClubCities = document.getElementById('reg-new-club-cities').value
+            .split(',').map(city => city.trim().replace(/\s+/g, ' ')).filter(Boolean).slice(0, 10);
+        if (!newClubCities.length) return alert("Renseignez la ville du club.");
+        newClubModules = {
+            training: document.getElementById('reg-new-club-training').checked,
+            school: document.getElementById('reg-new-club-school').checked
+        };
+        if (!newClubModules.training && !newClubModules.school) return alert("Cochez au moins une activité pour le club : entraînement ou école d'escalade.");
         clubId = 'club_' + Date.now();
     } else if (!clubId) return alert("Sélectionnez un club.");
 
@@ -1921,6 +2286,8 @@ async function register() {
             await db.collection('clubs').doc(clubId).set({
                 id: clubId,
                 name: newClubName,
+                cities: newClubCities,
+                modules: newClubModules,
                 categories: defaultCategories,
                 managerIds: [user.uid]
             });
@@ -1964,9 +2331,12 @@ async function register() {
         isRegistering = false; 
         
         document.getElementById('loader-screen').style.display = 'none';
-        alert(parentLinkFailed
-            ? "Compte créé et email de vérification envoyé. La liaison du compte enfant a échoué ; vous pourrez réessayer depuis votre profil après connexion."
-            : "Compte créé avec succès ! Un email de vérification vous a été envoyé. Veuillez cliquer sur le lien avant de vous connecter.");
+        showEmailSentDialog(parentLinkFailed
+            ? "Compte créé ! Un e-mail de vérification a été envoyé à " + email + ". Cliquez sur le lien avant de vous connecter.\n\nLa liaison du compte enfant a échoué : vous pourrez réessayer depuis les Paramètres après connexion."
+            : "Compte créé ! Un e-mail de vérification a été envoyé à " + email + ". Cliquez sur le lien qu'il contient avant de vous connecter.", 'Compte créé');
+        document.getElementById('reg-password').value = '';
+        document.getElementById('reg-password-confirm').value = '';
+        document.getElementById('login-email').value = email;
         switchAuthTab('login');
     } catch (error) {
         isRegistering = false; 
@@ -2005,7 +2375,7 @@ async function resetPassword() {
     if (!email) return alert("Veuillez saisir votre adresse email dans le champ pour réinitialiser le mot de passe.");
     try {
         await auth.sendPasswordResetEmail(email);
-        alert("Un email de réinitialisation vous a été envoyé.");
+        showEmailSentDialog("Un e-mail de réinitialisation a été envoyé à " + email + ". Suivez le lien qu'il contient pour choisir un nouveau mot de passe.", 'Mot de passe oublié');
     } catch (error) {
         alert("Erreur ou email introuvable.");
     }
@@ -2036,10 +2406,10 @@ function toggleAccountMenu() {
     if(linkedChildIds.length === 0 && !originalParentUser) return;
     if(dd.style.display === 'block') { dd.style.display = 'none'; return; }
     let html = '';
-    if(originalParentUser) html += `<button onclick="switchAccount('${escapeHtml(originalParentUser.id)}')">↩ Retour Parent (${escapeHtml(originalParentUser.username)})</button>`;
+    if(originalParentUser) html += `<button onclick="switchAccount('${escapeHtml(originalParentUser.id)}')">${uiIcon('undo')} Retour Parent (${escapeHtml(originalParentUser.username)})</button>`;
     linkedChildIds.forEach(cId => {
         const c = clubMembers.find(u=>u.id===cId);
-        if(c && c.id !== currentUser.id) html += `<button onclick="switchAccount('${escapeHtml(c.id)}')">👶 Basculer vers ${escapeHtml(c.username)}</button>`;
+        if(c && c.id !== currentUser.id) html += `<button onclick="switchAccount('${escapeHtml(c.id)}')">${uiIcon('switch')} Basculer vers ${escapeHtml(c.username)}</button>`;
     });
     dd.innerHTML = html; dd.style.display = 'block';
 }
@@ -2101,6 +2471,19 @@ async function linkChildAccount() {
 }
 
 // === NAVIGATION ===
+// Bandeau supérieur : photo de profil (ou silhouette), pseudo et rôle
+function renderHeaderUser() {
+    const target = document.getElementById('header-user-info-text');
+    if(!target || !currentUser) return;
+    const avatar = currentUser.avatar || (currentUser.profile && currentUser.profile.avatar);
+    const avatarHtml = avatar
+        ? `<img class="header-avatar" src="${escapeHtml(avatar)}" alt="">`
+        : `<span class="header-avatar header-avatar-placeholder" aria-hidden="true">${uiIcon('user')}</span>`;
+    let userText = `${avatarHtml}<span class="header-user-name">${escapeHtml(currentUser.username)}</span> <span class="header-user-role">(${getRoleLabel(getClubRole())})</span>`;
+    if(originalParentUser) userText += ` <span class="header-child-badge">Vue Enfant</span>`;
+    target.innerHTML = userText;
+}
+
 function showApp() {
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-content').style.display = 'block';
@@ -2111,9 +2494,7 @@ function showApp() {
     // Après la réinitialisation ci-dessus : seul un administrateur de la plateforme voit ce bouton.
     adminNav.style.display = isPlatformAdmin() ? 'inline-block' : 'none';
     const activeRole = getClubRole();
-    let userText = `👤 ${escapeHtml(currentUser.username)} <span class="header-user-role" style="opacity:0.7; font-size:0.8rem; margin-left:4px;">(${getRoleLabel(activeRole)})</span>`;
-    if(originalParentUser) userText += ` <span style="font-size:0.75rem; background:var(--primary); color:white; padding:2px 6px; border-radius:4px; margin-left:8px; font-weight:700;">Vue Enfant</span>`;
-    document.getElementById('header-user-info-text').innerHTML = userText;
+    renderHeaderUser();
     
     const coachTabs = document.querySelectorAll('.coach-only');
     if (hasCoachRights()) {
@@ -2124,9 +2505,16 @@ function showApp() {
     } else {
         coachTabs.forEach(el => el.style.display = 'none');
         document.querySelectorAll('.athlete-only').forEach(el => el.style.display = 'inline-block');
+        // Initiateur : vue athlète + bibliothèque de séances (sans les profils des membres)
+        if(canCreateSessions()) {
+            const sessionsNav = document.getElementById('nav-coach-dashboard');
+            if(sessionsNav) sessionsNav.style.display = 'inline-block';
+            updateCategorySelect();
+        }
         switchTab('athlete-sessions');
     }
-    if(!currentUser.clubId) switchTab('athlete-profile');
+    updateSchoolNavVisibility();
+    if(!currentUser.clubId) switchTab('settings');
     refreshPushState();
     const age = (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25);
     const btnLink = document.getElementById('btn-link-child');
@@ -2230,9 +2618,40 @@ function updateCategorySelect() {
     const select = document.getElementById('block-category');
     select.innerHTML = '';
     getMyClubObj().categories.forEach(cat => select.innerHTML += `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`);
-    select.innerHTML += `<option value="_new_" style="font-weight:700; color:var(--ffme-blue);">+ Nouvelle catégorie...</option>`;
+    // Créer un thème modifie le club : réservé aux coachs et plus
+    if(hasCoachRights() || isClubManager()) select.innerHTML += `<option value="_new_" style="font-weight:700; color:var(--ffme-blue);">Nouvelle catégorie…</option>`;
+    enhanceSelect(select, {
+        placeholder: 'Choisir un thème',
+        avatar: categoryPickerDot,
+        search: getMyClubObj().categories.length > 8,
+        searchPlaceholder: 'Rechercher un thème…'
+    });
 }
-function checkNewCategory(s) { if(s.value === '_new_') { openModal('modal-new-category'); document.getElementById('new-category-name').value=''; } }
+let newCategoryColor = CATEGORY_COLOR_PALETTE[0];
+function checkNewCategory(s) {
+    if(s.value !== '_new_') return;
+    document.getElementById('new-category-name').value = '';
+    // Couleur proposée par défaut : la première de la palette pas encore utilisée par le club
+    const club = getMyClubObj();
+    const used = new Set((club.categories || []).map(cat => getCategoryColor(cat, club)));
+    selectNewCategoryColor(CATEGORY_COLOR_PALETTE.find(color => !used.has(color)) || CATEGORY_COLOR_PALETTE[0]);
+    openModal('modal-new-category');
+}
+function selectNewCategoryColor(color) {
+    if(!/^#[0-9a-fA-F]{6}$/.test(color)) return;
+    newCategoryColor = color.toUpperCase();
+    const swatches = document.getElementById('new-category-swatches');
+    if(swatches) {
+        swatches.innerHTML = CATEGORY_COLOR_PALETTE.map(swatch => `<button type="button" class="color-swatch${swatch === newCategoryColor ? ' active' : ''}" style="--swatch:${swatch};" aria-label="Couleur ${swatch}" aria-pressed="${swatch === newCategoryColor}" onclick="selectNewCategoryColor('${swatch}')"></button>`).join('');
+    }
+    const custom = document.getElementById('new-category-color-custom');
+    if(custom) custom.value = newCategoryColor.toLowerCase();
+    const preview = document.getElementById('new-category-preview');
+    if(preview) {
+        preview.style.setProperty('--cat-color', newCategoryColor);
+        preview.textContent = document.getElementById('new-category-name').value.trim() || 'Aperçu';
+    }
+}
 async function saveNewCategory() {
     const c = document.getElementById('new-category-name').value.trim();
     const club = getMyClubObj();
@@ -2240,11 +2659,14 @@ async function saveNewCategory() {
     if(club.categories.includes(c)) return alert("Cette catégorie existe déjà.");
 
     const categories = [...club.categories, c];
+    const categoryColors = { ...(club.categoryColors || {}), [c]: newCategoryColor };
     try {
-        await db.collection('clubs').doc(club.id).update({ categories });
+        await db.collection('clubs').doc(club.id).update({ categories, categoryColors });
         club.categories = categories;
+        club.categoryColors = categoryColors;
         updateCategorySelect();
         document.getElementById('block-category').value = c;
+        enhanceSelect(document.getElementById('block-category'));
         closeModal('modal-new-category');
     } catch(error) {
         console.error("Erreur d'enregistrement de la catégorie:", error);
@@ -2256,11 +2678,21 @@ function getMyBlocks() {
     return clubBlocks.filter(b => b.userId === currentUser.id || b.authorId === currentUser.id || (!b.userId && !b.authorId));
 }
 
-function openCreateBlock() { editingBlockId = null; document.getElementById('modal-block-title-text').textContent = "Créer un Bloc"; document.getElementById('block-title').value = ''; document.getElementById('block-desc').value = ''; openModal('modal-create-block'); }
+function openCreateBlock() {
+    editingBlockId = null;
+    document.getElementById('modal-block-title-text').textContent = "Créer un Bloc";
+    document.getElementById('block-title').value = '';
+    document.getElementById('block-desc').value = '';
+    const categorySelect = document.getElementById('block-category');
+    if(categorySelect.value === '_new_' && categorySelect.options.length) categorySelect.selectedIndex = 0;
+    enhanceSelect(categorySelect);
+    openModal('modal-create-block');
+}
 function openEditBlock(id) {
     editingBlockId = id; const b = clubBlocks.find(x => x.id === id);
     document.getElementById('modal-block-title-text').textContent = "Modifier le Bloc";
     document.getElementById('block-category').value = b.category; document.getElementById('block-title').value = b.title; document.getElementById('block-desc').value = b.description;
+    enhanceSelect(document.getElementById('block-category'));
     openModal('modal-create-block');
 }
 async function deleteBlock(id) {
@@ -2318,7 +2750,7 @@ function updateBuilderBlocksList() {
     const filtered = currentSessionFilter === 'Toutes' ? myBlocks : myBlocks.filter(b => b.category === currentSessionFilter);
     document.getElementById('builder-blocks-list').innerHTML = filtered.map(b => {
         const firstLines = String(b.description || '').split(/\r?\n/).slice(0, 2).join('\n');
-        return `<div class="builder-block-card">
+        return `<div class="builder-block-card"${categoryColorStyle(b.category)}>
             <button type="button" class="builder-block-preview-button" onclick="openBlockPreview('${escapeHtml(b.id)}')">
                 <span class="builder-block-category">${escapeHtml(b.category)}</span>
                 <strong>${escapeHtml(b.title)}</strong>
@@ -2381,6 +2813,7 @@ function updateBuilderSeq() {
         const block = clubBlocks.find(item => item.id === blockId);
         const item = document.createElement('div');
         item.className = 'draggable-item';
+        if(block && block.category) item.style.setProperty('--cat-color', getCategoryColor(block.category));
         item.draggable = true;
         item.addEventListener('dragstart', event => {
             event.dataTransfer.effectAllowed = 'move';
@@ -2409,14 +2842,14 @@ function updateBuilderSeq() {
         const upButton = document.createElement('button');
         upButton.type = 'button';
         upButton.className = 'btn-icon';
-        upButton.textContent = '↑';
+        upButton.innerHTML = uiIcon('arrow-up');
         upButton.setAttribute('aria-label', `Déplacer ${block ? block.title : 'le bloc'} vers le haut`);
         upButton.disabled = index === 0;
         upButton.addEventListener('click', () => moveBuilderBlock(index, index - 1));
         const downButton = document.createElement('button');
         downButton.type = 'button';
         downButton.className = 'btn-icon';
-        downButton.textContent = '↓';
+        downButton.innerHTML = uiIcon('arrow-down');
         downButton.setAttribute('aria-label', `Déplacer ${block ? block.title : 'le bloc'} vers le bas`);
         downButton.disabled = index === builderBlocks.length - 1;
         downButton.addEventListener('click', () => moveBuilderBlock(index, index + 2));
@@ -2434,11 +2867,49 @@ function updateBuilderSeq() {
         sequence.appendChild(item);
     });
 }
+// --- Noms de séances uniques ---
+// Un nom ne peut servir qu'une fois par bibliothèque : les séances personnelles d'un coach d'un côté,
+// la bibliothèque du club de l'autre (sans tenir compte des majuscules, accents et espaces en trop).
+function normalizeSessionName(name) {
+    return String(name || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function getSessionNameScope(shared) {
+    return clubSessions.filter(session =>
+        !session.archived &&
+        session.clubId === currentUser.clubId &&
+        (shared ? session.isShared : (!session.isShared && session.authorId === currentUser.id))
+    );
+}
+function isSessionNameTaken(name, shared, excludeId = null) {
+    const wanted = normalizeSessionName(name);
+    return getSessionNameScope(shared).some(session => session.id !== excludeId && normalizeSessionName(session.name) === wanted);
+}
+// « Nom (Copie) », puis « Nom (Copie 2) », « Nom (Copie 3) »… jusqu'à trouver un nom libre
+function makeUniqueSessionName(baseName, suffix, shared) {
+    const base = String(baseName || 'Séance').trim() || 'Séance';
+    let candidate = suffix ? `${base} (${suffix})` : base;
+    let counter = 2;
+    while(isSessionNameTaken(candidate, shared)) {
+        candidate = `${base} (${suffix ? suffix + ' ' : ''}${counter})`;
+        counter++;
+    }
+    return candidate;
+}
+
 async function saveSession() {
-    const name = document.getElementById('session-name').value.trim();
+    const name = document.getElementById('session-name').value.trim().replace(/\s+/g, ' ');
     if(!name) return alert("Veuillez donner un nom à la séance.");
     if(builderBlocks.length === 0) return alert("Ajoutez au moins un bloc à la séance.");
     if(isSavingSession) return;
+    const editedSession = editingSessionId ? clubSessions.find(session => session.id === editingSessionId) : null;
+    const targetShared = Boolean(editedSession && editedSession.isShared);
+    if(isSessionNameTaken(name, targetShared, editingSessionId)) {
+        return alert(targetShared
+            ? `La bibliothèque du club contient déjà une séance nommée « ${name} ». Choisissez un autre nom.`
+            : `Vous avez déjà une séance nommée « ${name} ». Choisissez un autre nom.`);
+    }
 
     const saveButton = document.getElementById('save-session-button');
     isSavingSession = true;
@@ -2562,7 +3033,7 @@ async function getClubSessionBlockSnapshots(session) {
             );
             block = assignment && assignment.sessionSnapshot.blocks[index];
         }
-        if(!block && blockId && !hasCoachRights(currentUser, session.clubId)) {
+        if(!block && blockId && !canCreateSessions(currentUser, session.clubId)) {
             throw new Error("Cette ancienne séance ne contient pas encore le détail de ses exercices. Demandez au coach de la modifier et de l'enregistrer.");
         }
         if(!block && blockId) {
@@ -2584,7 +3055,7 @@ async function duplicateSession(id) {
     if(!s) return alert("Cette séance n'est plus disponible.");
     const newSession = {
         id: 'sess_' + Date.now(),
-        name: s.name + " (Copie)",
+        name: makeUniqueSessionName(s.name, 'Copie', false),
         blocks: [...(s.blocks || [])],
         clubId: currentUser.clubId,
         authorId: currentUser.id,
@@ -2643,8 +3114,57 @@ function openEditSession(id) {
 // COACH DASHBOARD UI
 function setCoachBlockFilter(cat) { coachBlockFilter = cat; renderCoachDashboard(); }
 function updateCoachBlockSearch(val) { coachBlockSearch = val; renderCoachDashboard(); }
-function updateCoachSessionSearch(val) { coachSessionSearch = val; renderCoachDashboard(); }
-function setSessionLibraryTab(tab) { currentSessionLibraryTab = tab; document.getElementById('tab-btn-perso').classList.toggle('active', tab === 'personal'); document.getElementById('tab-btn-club').classList.toggle('active', tab === 'club'); document.getElementById('tab-btn-global').classList.toggle('active', tab === 'global'); renderCoachDashboard(); }
+function updateCoachSessionSearch(val) { coachSessionSearch = val; coachSessionsExpanded = false; renderCoachDashboard(); }
+
+// --- Tri des séances et affichage progressif (12 d'abord, puis « Afficher plus ») ---
+const COACH_SESSIONS_PAGE_SIZE = 12;
+const SESSION_SORT_STORAGE_KEY = 'hdf-session-sort';
+let coachSessionsExpanded = false;
+let coachSessionSort = (() => {
+    try {
+        const saved = localStorage.getItem(SESSION_SORT_STORAGE_KEY);
+        return ['recent', 'alpha', 'assigned'].includes(saved) ? saved : 'recent';
+    } catch(e) { return 'recent'; }
+})();
+function setCoachSessionSort(value) {
+    coachSessionSort = ['recent', 'alpha', 'assigned'].includes(value) ? value : 'recent';
+    try { localStorage.setItem(SESSION_SORT_STORAGE_KEY, coachSessionSort); } catch(e) {}
+    coachSessionsExpanded = false;
+    renderCoachDashboard();
+}
+function showAllCoachSessions() {
+    coachSessionsExpanded = true;
+    renderCoachDashboard();
+}
+function getSessionCreatedTime(session) {
+    const created = session.createdAt;
+    if(created && typeof created.toMillis === 'function') return created.toMillis();
+    if(typeof created === 'number') return created;
+    const match = /^sess_(\d+)/.exec(session.id || '');
+    return match ? Number(match[1]) : 0;
+}
+function sortCoachSessions(sessions) {
+    const sorted = [...sessions];
+    if(coachSessionSort === 'alpha') {
+        sorted.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'fr', { sensitivity: 'base', numeric: true }));
+    } else if(coachSessionSort === 'assigned') {
+        const counts = new Map();
+        clubAssignments.forEach(assignment => counts.set(assignment.sessionId, (counts.get(assignment.sessionId) || 0) + 1));
+        sorted.sort((a, b) => (counts.get(b.id) || 0) - (counts.get(a.id) || 0) || getSessionCreatedTime(b) - getSessionCreatedTime(a));
+    } else {
+        sorted.sort((a, b) => getSessionCreatedTime(b) - getSessionCreatedTime(a));
+    }
+    return sorted;
+}
+function renderCoachSessionsMore(total, shown) {
+    const more = document.getElementById('coach-sessions-more');
+    if(!more) return;
+    const remaining = total - shown;
+    more.innerHTML = remaining > 0
+        ? `<button type="button" class="btn-outline show-more-button" onclick="showAllCoachSessions()">${uiIcon('chevron-down')}Afficher ${remaining > 1 ? `les ${remaining} autres séances` : "l'autre séance"}</button>`
+        : '';
+}
+function setSessionLibraryTab(tab) { currentSessionLibraryTab = tab; coachSessionsExpanded = false; document.getElementById('tab-btn-perso').classList.toggle('active', tab === 'personal'); document.getElementById('tab-btn-club').classList.toggle('active', tab === 'club'); document.getElementById('tab-btn-global').classList.toggle('active', tab === 'global'); renderCoachDashboard(); }
 
 function renderCoachDashboard() {
     renderNotifications();
@@ -2654,28 +3174,42 @@ function renderCoachDashboard() {
     const myBlocks = getMyBlocks();
     let fBlocks = coachBlockFilter === 'Toutes' ? myBlocks : myBlocks.filter(b => b.category === coachBlockFilter);
     if (coachBlockSearch) fBlocks = fBlocks.filter(b => (b.title || '').toLowerCase().includes(coachBlockSearch.toLowerCase()));
-    document.getElementById('coach-blocks-grid').innerHTML = fBlocks.map(b => `<div class="card"><div class="card-header"><span class="card-category">${escapeHtml(b.category)}</span><div style="display:flex;gap:0.25rem;"><button class="btn-icon" style="padding:0;" onclick="openEditBlock('${escapeHtml(b.id)}')">✏️</button><button class="btn-icon" style="padding:0; color:var(--danger);" onclick="deleteBlock('${escapeHtml(b.id)}')">🗑️</button></div></div><div class="card-title">${escapeHtml(b.title)}</div><p style="font-size:0.95rem; color:var(--text-muted);">${escapeHtml(b.description)}</p></div>`).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; padding:2rem; text-align:center;'>Aucun bloc personnel créé.</p>";
+    document.getElementById('coach-blocks-grid').innerHTML = fBlocks.map(b => `<div class="card block-card"${categoryColorStyle(b.category)}><div class="card-header"><span class="card-category">${escapeHtml(b.category)}</span><div style="display:flex;gap:0.25rem;"><button class="btn-icon" style="padding:0;" onclick="openEditBlock('${escapeHtml(b.id)}')">${uiIcon('edit')}</button><button class="btn-icon" style="padding:0; color:var(--danger);" onclick="deleteBlock('${escapeHtml(b.id)}')">${uiIcon('trash')}</button></div></div><div class="card-title">${escapeHtml(b.title)}</div><p style="font-size:0.95rem; color:var(--text-muted);">${escapeHtml(b.description)}</p></div>`).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; padding:2rem; text-align:center;'>Aucun bloc personnel créé.</p>";
     
+    const sortSelect = document.getElementById('sort-sessions');
+    if(sortSelect) {
+        sortSelect.value = coachSessionSort;
+        enhanceChoices(sortSelect, { variant: 'pills', label: 'Trier les séances' });
+        // Le tri ne s'applique qu'aux séances du coach et du club
+        sortSelect.closest('.session-sort').style.display = currentSessionLibraryTab === 'global' ? 'none' : '';
+    }
     if (currentSessionLibraryTab === 'global') {
         document.getElementById('coach-sessions-grid').innerHTML = renderGlobalLibrarySessions();
+        renderCoachSessionsMore(0, 0);
         return;
     }
     let tSessions = currentSessionLibraryTab === 'personal'
         ? clubSessions.filter(s => !s.archived && s.authorId === currentUser.id && !s.isShared)
         : clubSessions.filter(s => !s.archived && s.isShared);
     if (coachSessionSearch) tSessions = tSessions.filter(s => (s.name || '').toLowerCase().includes(coachSessionSearch.toLowerCase()));
+    tSessions = sortCoachSessions(tSessions);
+    const totalSessions = tSessions.length;
+    // Une recherche affiche toujours tous les résultats
+    if(!coachSessionsExpanded && !coachSessionSearch) tSessions = tSessions.slice(0, COACH_SESSIONS_PAGE_SIZE);
+    renderCoachSessionsMore(totalSessions, tSessions.length);
     document.getElementById('coach-sessions-grid').innerHTML = tSessions.map(s => {
-        let shareBtn = currentSessionLibraryTab === 'personal' ? `<button class="btn-outline" style="width:100%; margin-bottom:1rem;" onclick="shareSession('${escapeHtml(s.id)}')">Partager</button>` : '';
-        let actions = `<button class="btn-icon" title="Dupliquer" onclick="duplicateSession('${escapeHtml(s.id)}')">📋</button>`;
+        // Le partage au club / à la bibliothèque commune reste réservé aux coachs et plus
+        let shareBtn = currentSessionLibraryTab === 'personal' && hasCoachRights() ? `<button class="btn-outline" onclick="shareSession('${escapeHtml(s.id)}')">Partager</button>` : '';
+        let actions = `<button class="btn-icon" title="Dupliquer" onclick="duplicateSession('${escapeHtml(s.id)}')">${uiIcon('copy')}</button>`;
         if(canManageClubSession(s)) {
-            actions += ` <button class="btn-icon" title="Modifier" onclick="openEditSession('${escapeHtml(s.id)}')">✏️</button> <button class="btn-icon" style="color:var(--danger);" title="Supprimer" onclick="deleteSession('${escapeHtml(s.id)}')">🗑️</button>`;
+            actions += ` <button class="btn-icon" title="Modifier" onclick="openEditSession('${escapeHtml(s.id)}')">${uiIcon('edit')}</button> <button class="btn-icon" style="color:var(--danger);" title="Supprimer" onclick="deleteSession('${escapeHtml(s.id)}')">${uiIcon('trash')}</button>`;
         }
 
         const pendingAssigns = clubAssignments.filter(a => a.sessionId === s.id && !a.isDone);
         let assignedHtml = '';
         if(pendingAssigns.length > 0) {
             const names = pendingAssigns.map(a => { const u = clubMembers.find(x=>x.id===a.athleteId); return u ? escapeHtml(u.username) : ''; }).filter(Boolean).join(', ');
-            assignedHtml = `<div style="font-size:0.8rem; color:var(--ffme-blue-dark); background:#EFF6FF; padding:0.5rem 0.8rem; border-radius:var(--radius-md); margin-bottom:1rem; font-weight:600; border:1px solid #BFDBFE;">En cours par : ${names}</div>`;
+            assignedHtml = `<div class="session-card-assigned">En cours par : ${names}</div>`;
         }
 
         return `<div class="card">
@@ -2683,10 +3217,12 @@ function renderCoachDashboard() {
                         <div class="card-title" style="flex:1;">${escapeHtml(s.name)}</div>
                         <div style="display:flex; gap:0.25rem;">${actions}</div>
                     </div>
-                    <p style="font-size:0.95rem; color:var(--text-muted); font-weight:600; margin-bottom:1.5rem; margin-top:0;">${(s.blocks || []).length} exercices</p>
+                    <p class="session-card-meta">${(s.blocks || []).length} exercices</p>
                     ${assignedHtml}
-                    ${shareBtn}
-                    <button class="btn-primary" style="width:100%; margin-top:auto;" onclick="openAssignModal('${escapeHtml(s.id)}')">Attribuer</button>
+                    <div class="session-card-actions">
+                        ${shareBtn}
+                        <button class="btn-primary" onclick="startSessionAssignment('${escapeHtml(s.id)}')">Attribuer</button>
+                    </div>
                 </div>`;
     }).join('');
 }
@@ -2700,6 +3236,9 @@ async function publishToClub(id) {
     );
     if(!session || !hasCoachRights()) {
         return alert("Seul le coach propriétaire peut partager cette séance au club.");
+    }
+    if(isSessionNameTaken(session.name, true)) {
+        return alert(`La bibliothèque du club contient déjà une séance nommée « ${session.name} ». Renommez votre séance avant de la partager.`);
     }
 
     try {
@@ -2765,12 +3304,12 @@ function renderAssignmentMemberOption(member, pendingAthleteIds) {
     const isPending = pendingAthleteIds.has(member.id);
     const avatar = member.avatar
         ? `<img src="${escapeHtml(member.avatar)}" alt="" class="group-member-avatar">`
-        : '<span class="group-member-avatar group-member-avatar-placeholder" aria-hidden="true">👤</span>';
+        : '<span class="group-member-avatar group-member-avatar-placeholder" aria-hidden="true">' + uiIcon('user') + '</span>';
     return `<label class="group-member-option assignment-member-option ${assignmentSelectedIds.has(member.id) ? 'selected' : ''} ${isPending ? 'assignment-member-pending' : ''}" data-member-name="${escapeHtml(member.username || '')}">
         <input type="checkbox" class="athlete-checkbox" value="${escapeHtml(member.id)}" ${assignmentSelectedIds.has(member.id) || isPending ? 'checked' : ''} ${isPending ? 'disabled' : ''} onchange="updateAssignmentSelection(this)">
         ${avatar}
         <span class="group-member-details"><strong>${escapeHtml(member.username || 'Membre')}</strong><small>${escapeHtml(getRoleLabel(getClubRole(member, currentUser.clubId)))}</small></span>
-        <span class="group-member-checkmark" aria-hidden="true">✓</span>
+        <span class="group-member-checkmark" aria-hidden="true">${uiIcon('check')}</span>
     </label>`;
 }
 
@@ -2881,12 +3420,12 @@ function renderGroupMemberPicker() {
     container.innerHTML = visibleMembers.map(member => {
         const avatar = member.avatar
             ? `<img src="${escapeHtml(member.avatar)}" alt="" class="group-member-avatar">`
-            : `<span class="group-member-avatar group-member-avatar-placeholder" aria-hidden="true">👤</span>`;
+            : `<span class="group-member-avatar group-member-avatar-placeholder" aria-hidden="true">${uiIcon('user')}</span>`;
         return `<label class="group-member-option ${groupEditorSelectedIds.has(member.id) ? 'selected' : ''}">
             <input type="checkbox" class="new-grp-cb" value="${escapeHtml(member.id)}" ${groupEditorSelectedIds.has(member.id) ? 'checked' : ''} onchange="updateGroupMemberSelection(this)">
             ${avatar}
             <span class="group-member-details"><strong>${escapeHtml(member.username || 'Membre')}</strong><small>${escapeHtml(getRoleLabel(getClubRole(member, currentUser.clubId)))}</small></span>
-            <span class="group-member-checkmark" aria-hidden="true">✓</span>
+            <span class="group-member-checkmark" aria-hidden="true">${uiIcon('check')}</span>
         </label>`;
     }).join('') || '<p class="group-member-empty">Aucun membre ne correspond à cette recherche.</p>';
 }
@@ -2928,7 +3467,7 @@ function renderGroupAvatarPreview() {
     if(!preview || !removeButton) return;
     preview.innerHTML = groupEditorAvatar
         ? `<img src="${escapeHtml(groupEditorAvatar)}" alt="Photo du groupe">`
-        : '<span aria-hidden="true">👥</span>';
+        : '<span aria-hidden="true">' + uiIcon('users') + '</span>';
     removeButton.style.display = groupEditorAvatar ? 'inline-block' : 'none';
 }
 
@@ -3061,11 +3600,11 @@ function renderManageGroupsList() {
         <div class="existing-group-item ${g.id === editingGroupId ? 'active' : ''}">
             ${g.avatar
                 ? `<img class="existing-group-avatar" src="${escapeHtml(g.avatar)}" alt="">`
-                : '<span class="existing-group-avatar existing-group-avatar-placeholder" aria-hidden="true">👥</span>'}
-            <div class="existing-group-info"><strong>${escapeHtml(g.name)}</strong><span>${(g.athletes || []).length} membres${g.notify ? ' · 🔔 Alertes' : ''}</span></div>
+                : '<span class="existing-group-avatar existing-group-avatar-placeholder" aria-hidden="true">' + uiIcon('users') + '</span>'}
+            <div class="existing-group-info"><strong>${escapeHtml(g.name)}</strong><span>${(g.athletes || []).length} membres${g.notify ? ' · ' + uiIcon('bell') + ' Alertes' : ''}</span></div>
             <div class="existing-group-actions">
-                <button class="btn-icon" title="Modifier ${escapeHtml(g.name)}" aria-label="Modifier ${escapeHtml(g.name)}" onclick="editGroup('${escapeHtml(g.id)}')">✏️</button>
-                <button class="btn-icon" title="Supprimer ${escapeHtml(g.name)}" aria-label="Supprimer ${escapeHtml(g.name)}" onclick="deleteGroup('${escapeHtml(g.id)}')">🗑️</button>
+                <button class="btn-icon" title="Modifier ${escapeHtml(g.name)}" aria-label="Modifier ${escapeHtml(g.name)}" onclick="editGroup('${escapeHtml(g.id)}')">${uiIcon('edit')}</button>
+                <button class="btn-icon" title="Supprimer ${escapeHtml(g.name)}" aria-label="Supprimer ${escapeHtml(g.name)}" onclick="deleteGroup('${escapeHtml(g.id)}')">${uiIcon('trash')}</button>
             </div>
         </div>
     `).join('') || "<p class='group-member-empty'>Aucun groupe créé pour ce club.</p>";
@@ -3111,9 +3650,9 @@ function renderCoachAthletes() {
 
     let html = `<div class="card interactive" style="align-items:center; text-align:center; background: var(--gradient-primary); color: white; border:none;" onclick="showAthletesGrid('all')">
                     <div style="width:76px;height:76px;border-radius:50%;overflow:hidden;margin-bottom:0.5rem;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:1.7rem;font-weight:800;">${getMyClubObj().avatar ? `<img src="${escapeHtml(getMyClubObj().avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;">` : escapeHtml((getMyClubObj().name || 'C').charAt(0).toUpperCase())}</div>
-                    <div class="card-title" style="color:white; font-size:1.3rem;">${escapeHtml(getMyClubObj().name || 'Mon club')}</div>
+                    <div class="card-title" style="color:white;">${escapeHtml(getMyClubObj().name || 'Mon club')}</div>
                     <div style="font-size:0.9rem; opacity:0.9;">${clubMembers.length} membres</div>
-                    ${hasCoachRights() && currentUser.clubId ? '<button class="btn-outline" style="margin-top:0.75rem;background:white;" onclick="event.stopPropagation(); document.getElementById(\'club-avatar-input\').click()">Ajouter / modifier la photo</button>' : ''}
+                    ${isClubManager() && currentUser.clubId ? `<button type="button" class="club-card-settings" title="Paramètres du club" aria-label="Paramètres du club" onclick="event.stopPropagation(); openClubSettings()">${CLUB_SETTINGS_ICON}</button>` : ''}
                 </div>`;
                 
     const currentClubGroups = (currentUser.profile.groups || []).filter(g => !g.clubId || g.clubId === currentUser.clubId);
@@ -3122,8 +3661,8 @@ function renderCoachAthletes() {
             html += `<div class="card interactive coach-group-card" onclick="showAthletesGrid('${escapeHtml(g.id)}')">
                         ${g.avatar
                             ? `<img class="coach-group-avatar" src="${escapeHtml(g.avatar)}" alt="">`
-                            : '<div class="coach-group-icon" aria-hidden="true">👥</div>'}
-                        <div class="card-title" style="font-size:1.3rem;">${escapeHtml(g.name)}</div>
+                            : '<div class="coach-group-icon" aria-hidden="true">' + uiIcon('users') + '</div>'}
+                        <div class="card-title">${escapeHtml(g.name)}</div>
                         <div style="font-size:0.9rem; color:var(--text-muted); font-weight:600;">${(g.athletes || []).length} membres</div>
                      </div>`;
         });
@@ -3168,7 +3707,7 @@ function showAthletesGrid(groupId) {
         const plannedDays = countUpcomingTrainingDays(ath);
         const coverageOk = pending >= plannedDays;
         badge += ` <span class="status-badge training-coverage ${coverageOk ? 'coverage-ok' : 'coverage-low'}" title="${pending} séance${pending > 1 ? 's' : ''} en attente pour ${plannedDays} jour${plannedDays > 1 ? 's' : ''} d'entraînement à venir">${pending}/${plannedDays}</span>`;
-        let avatarHtml = `<div style="font-size:2rem; margin-bottom:0.5rem; width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:var(--bg-color); border-radius:50%;">👤</div>`;
+        let avatarHtml = `<div style="font-size:2rem; margin-bottom:0.5rem; width:60px; height:60px; display:flex; align-items:center; justify-content:center; background:var(--bg-color); border-radius:50%;">${uiIcon('user')}</div>`;
         if(ath.avatar) avatarHtml = `<img src="${escapeHtml(ath.avatar)}" style="width:60px; height:60px; border-radius:50%; object-fit:cover; margin-bottom:0.5rem;">`;
         return `<div class="card interactive" style="align-items:center; text-align:center;" onclick="openAthleteProfileCoach('${escapeHtml(ath.id)}')">${avatarHtml}<div class="card-title">${escapeHtml(ath.username)} <span style="font-size:0.8rem; opacity:0.7;">(${escapeHtml(getRoleLabel(getClubRole(ath, currentUser.clubId)))})</span></div><div>${badge}</div></div>`;
     }).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center;'>Aucun membre dans cette liste.</p>";
@@ -3196,6 +3735,7 @@ function openAthleteProfileCoach(athId) {
     if(roleControl && roleSelect) {
         roleControl.style.display = isClubManager() ? 'block' : 'none';
         roleSelect.value = getClubRole(ath, currentUser.clubId);
+        enhanceRoleChoices(roleSelect);
     }
     document.getElementById('view-athlete-objectives').textContent = ath.profile.objectives || "Aucun objectif.";
     document.getElementById('view-athlete-comps').innerHTML = ath.profile.competitions.map(c => `<div class="comp-item"><b>${escapeHtml(c.type)}</b> - ${escapeHtml(c.place)}<br><span style="font-size:0.9rem; color:var(--text-muted);">${escapeHtml(c.feeling)}</span></div>`).join('') || "<p style='color:var(--text-muted);'>Aucune compétition.</p>";
@@ -3203,6 +3743,7 @@ function openAthleteProfileCoach(athId) {
     renderRadarChart('chart-t1-coach', ath.profile.skillsT1, "Technique & Gestuelle", 'rgba(0, 85, 164, 0.5)');
     renderRadarChart('chart-t2-coach', ath.profile.skillsT2, 'Physique & Mental', 'rgba(239, 68, 68, 0.5)');
     selectedUserIdForCalendar = ath.id; renderCalendar('coach-view-calendar-container');
+    renderMemberCycles(ath.id);
     
     switchAthleteViewTab('profil');
     openModal('modal-view-athlete');
@@ -3264,14 +3805,14 @@ async function renderCoachAthleteHistory() {
         const openHandler = canView ? `onclick="viewSessionReadonly('${escapeHtml(assignment.id)}')"` : 'aria-disabled="true"';
         const sessionTitle = session ? session.name : 'Séance indisponible';
         const deleteButton = hasCoachRights() && assignment.clubId === currentUser.clubId
-            ? `<button class="btn-icon coach-history-delete" type="button" title="Supprimer cette attribution" aria-label="Supprimer l’attribution de ${escapeHtml(sessionTitle)}" onclick="event.stopPropagation(); deleteAssignment('${escapeHtml(assignment.id)}', true)">🗑️</button>`
+            ? `<button class="btn-icon coach-history-delete" type="button" title="Supprimer cette attribution" aria-label="Supprimer l’attribution de ${escapeHtml(sessionTitle)}" onclick="event.stopPropagation(); deleteAssignment('${escapeHtml(assignment.id)}', true)">${uiIcon('trash')}</button>`
             : '';
         return `<div class="${cardClass} ${rpeWarning}" ${openHandler}>
                     <div class="card-header">
                         <span class="card-category">${isDone ? `RPE Moyen : ${assignment.avgRpe ? assignment.avgRpe.toFixed(1) : '-'}` : 'En cours'}</span>
                         <div class="coach-session-card-status">
                             ${isDone ? '<span class="status-badge status-done">Terminée</span>' : '<span class="status-badge status-alert">À réaliser</span>'}
-                            ${canView ? '' : '<span class="session-access-lock" title="Détail non accessible" aria-label="Détail non accessible">🔒</span>'}
+                            ${canView ? '' : '<span class="session-access-lock" title="Détail non accessible" aria-label="Détail non accessible">' + uiIcon('lock') + '</span>'}
                             ${deleteButton}
                         </div>
                     </div>
@@ -3345,7 +3886,7 @@ async function viewSessionReadonly(assId) {
             const blockRpeVal = (a.blockRpes && a.blockRpes[b.id]) ? a.blockRpes[b.id] : '-';
             rpeHtml = `<div style="margin-top:0.75rem; font-size:0.9rem; color:var(--ffme-red); font-weight:700;">RPE Donné : ${blockRpeVal}</div>`;
         }
-        return b ? `<div style="padding:1rem; border:1px solid var(--border-color); border-left:4px solid var(--ffme-blue); border-radius:var(--radius-md); margin-bottom:1rem; background:var(--surface);">
+        return b ? `<div class="session-view-block"${categoryColorStyle(b.category)}>
                     <div class="card-category" style="margin-bottom:0.5rem;">${escapeHtml(b.category)}</div>
                     <div style="font-weight:800; font-size:1.1rem; margin-bottom:0.5rem;">${i+1}. ${escapeHtml(b.title)}</div>
                     <div style="white-space:pre-wrap; font-size:0.95rem; color:var(--text-muted);">${escapeHtml(b.description)}</div>
@@ -3434,10 +3975,10 @@ function renderAthleteSessions() {
         let assignerStr = '';
         if(a.assignerId) {
             const c = clubMembers.find(u=>u.id===a.assignerId);
-            if(c) assignerStr = `<span style="font-size:0.75rem; background:#F1F5F9; color:var(--text-muted); padding:2px 6px; border-radius:4px; margin-left:8px;">Attribué par ${escapeHtml(c.username)}</span>`;
+            if(c) assignerStr = `<span style="font-size:0.75rem; background:var(--surface-subtle); color:var(--text-muted); padding:2px 6px; border-radius:4px; margin-left:8px;">Attribué par ${escapeHtml(c.username)}</span>`;
         }
         const deleteTitle = a.isDone ? "Supprimer de l'historique" : "Supprimer de mes séances";
-        return `<div class="card interactive" onclick="openSessionAthlete('${escapeHtml(a.id)}')"><div class="card-header" style="align-items:center;"><span class="card-category">Entraînement</span><div style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">${a.isDone ? '<span class="status-badge status-done">Fait ✓</span>' : ''}<button class="btn-icon" style="color:var(--danger); padding:2px;" title="${deleteTitle}" onclick="event.stopPropagation(); deleteAssignment('${escapeHtml(a.id)}')">🗑️</button></div></div><div class="card-title" style="font-size:1.25rem;">${escapeHtml(s.name)}</div><p style="font-size:0.95rem; color:var(--text-muted); margin:0;">${blockCount} exercices ${assignerStr}</p></div>`;
+        return `<div class="card interactive" onclick="openSessionAthlete('${escapeHtml(a.id)}')"><div class="card-header" style="align-items:center;"><span class="card-category">Entraînement</span><div style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">${a.isDone ? '<span class="status-badge status-done">' + uiIcon('check') + ' Fait</span>' : ''}<button class="btn-icon" style="color:var(--danger); padding:2px;" title="${deleteTitle}" onclick="event.stopPropagation(); deleteAssignment('${escapeHtml(a.id)}')">${uiIcon('trash')}</button></div></div><div class="card-title">${escapeHtml(s.name)}</div><p style="font-size:0.95rem; color:var(--text-muted); margin:0;">${blockCount} exercices ${assignerStr}</p></div>`;
     };
     
     document.getElementById('classic-sessions-grid').innerHTML = todo.map(renderCard).join('') || "<p style='color:var(--text-muted); grid-column:1/-1; text-align:center; padding:3rem;'>Aucune séance en attente.</p>";
@@ -3461,11 +4002,12 @@ function renderAthleteClubMembers() {
     grid.innerHTML = members.map(member => {
         const avatar = member.avatar
             ? `<img src="${escapeHtml(member.avatar)}" alt="" class="athlete-club-member-avatar">`
-            : `<div class="athlete-club-member-avatar athlete-club-member-placeholder" aria-hidden="true">👤</div>`;
+            : `<div class="athlete-club-member-avatar athlete-club-member-placeholder" aria-hidden="true">${uiIcon('user')}</div>`;
         return `<article class="card athlete-club-member-card">
                     ${avatar}
                     <div class="card-title">${escapeHtml(member.username || 'Membre')}</div>
                     <span class="card-category">${escapeHtml(getRoleLabel(getClubRole(member, currentUser.clubId)))}</span>
+                    ${isClubManager() ? `<button type="button" class="btn-outline athlete-club-member-role" onclick="openMemberRoleModal('${escapeHtml(member.id)}')">${uiIcon('users')}Rôle</button>` : ''}
                 </article>`;
     }).join('') || `<p class="athlete-club-empty">${athleteClubMemberSearch ? 'Aucun membre ne correspond à cette recherche.' : 'Aucun membre trouvé dans ce club.'}</p>`;
 }
@@ -3519,7 +4061,7 @@ async function openAthleteClubSession(sessionId) {
     document.getElementById('view-session-coach-readonly').style.display = 'block';
     document.getElementById('view-session-coach-report').style.display = 'none';
     document.getElementById('view-session-content-coach').innerHTML = sessionBlocks.map((block, index) => block
-        ? `<div class="club-session-detail-block">
+        ? `<div class="club-session-detail-block"${categoryColorStyle(block.category)}>
                 <div class="card-category">${escapeHtml(block.category || 'Exercice')}</div>
                 <div class="club-session-detail-title">${index + 1}. ${escapeHtml(block.title || 'Exercice sans titre')}</div>
                 <div class="club-session-detail-description">${escapeHtml(block.description || '')}</div>
@@ -3623,7 +4165,7 @@ function openSessionAthlete(assId) {
         }
 
         return `
-        <div class="athlete-block-card">
+        <div class="athlete-block-card"${categoryColorStyle(b.category)}>
             <div class="card-category" style="margin-bottom:0.5rem;">${escapeHtml(b.category)}</div>
             <div style="font-weight:800; font-size:1.15rem; margin-bottom:0.5rem; color:var(--ffme-blue-dark);">${i+1}. ${escapeHtml(b.title)}</div>
             <div style="white-space:pre-wrap; font-size:0.95rem; color:var(--text-dark); line-height:1.5;">${escapeHtml(b.description)}</div>
@@ -3633,7 +4175,7 @@ function openSessionAthlete(assId) {
     
     const btn = document.getElementById('btn-validate-session');
     if (btn) {
-        btn.textContent = a.isDone ? "Mettre à jour mon retour" : "✓ Marquer la séance comme terminée";
+        btn.textContent = a.isDone ? "Mettre à jour mon retour" : "Marquer la séance comme terminée";
     }
     openModal('modal-view-session');
 }
@@ -3901,19 +4443,9 @@ async function installApp() {
 }
 
 // --- ATHLETE PROFIL & AVATAR ---
-function renderAthleteProfile() {
-    document.getElementById('profile-display-name').textContent = currentUser.username;
-    document.getElementById('profile-objectives').value = currentUser.profile.objectives || '';
-    renderInstallAppEntry();
-    renderPushEntry();
-    
-    const pre = document.getElementById('profile-avatar-preview');
-    const pla = document.getElementById('profile-avatar-placeholder');
-    const avatar = currentUser.avatar || currentUser.profile.avatar;
-    if (avatar) {
-        pre.src = avatar; pre.style.display = 'block'; pla.style.display = 'none';
-    } else { pre.style.display = 'none'; pla.style.display = 'block'; }
-
+// Paramètres > Comptes parent / enfant (code parent, liaison d'un enfant, comptes liés)
+function renderSettingsFamily() {
+    if(!currentUser) return;
     const pCode = document.getElementById('profile-parent-code-display');
     const isOwnAccount = !originalParentUser && auth.currentUser && auth.currentUser.uid === currentUser.id;
     const age = currentUser.dob
@@ -3948,9 +4480,30 @@ function renderAthleteProfile() {
         ? '<p class="form-hint">Pour protéger les comptes, les anciennes liaisons doivent être renouvelées : demandez à chaque enfant de se connecter et de vous transmettre son nouveau code privé.</p>'
         : '';
     childrenList.innerHTML = linkedChildrenMarkup + linkedParentsMarkup + revalidationNotice;
+    const btnLink = document.getElementById('btn-link-child');
+    const canLinkChild = age >= 18 && !originalParentUser;
+    if(btnLink) btnLink.style.display = canLinkChild ? 'inline-flex' : 'none';
+    const emptyNotice = document.getElementById('settings-family-empty');
+    if(emptyNotice) emptyNotice.style.display = (pCode.style.display === 'none' && !canLinkChild && !childrenList.innerHTML) ? '' : 'none';
+}
 
+function renderAthleteProfile() {
+    document.getElementById('profile-display-name').textContent = currentUser.username;
+    document.getElementById('profile-objectives').value = currentUser.profile.objectives || '';
+    renderInstallAppEntry();
+    renderPushEntry();
+    
+    const pre = document.getElementById('profile-avatar-preview');
+    const pla = document.getElementById('profile-avatar-placeholder');
+    const avatar = currentUser.avatar || currentUser.profile.avatar;
+    if (avatar) {
+        pre.src = avatar; pre.style.display = 'block'; pla.style.display = 'none';
+    } else { pre.style.display = 'none'; pla.style.display = 'block'; }
+
+    renderSettingsFamily();
     renderProfileClubs();
     renderMyRoleRequests();
+    renderOwnCycles();
 
     document.getElementById('athlete-competitions-list').innerHTML = (currentUser.profile.competitions && currentUser.profile.competitions.length > 0) ? currentUser.profile.competitions.map((c, idx) => `
         <div class="comp-item" style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem;">
@@ -3959,8 +4512,8 @@ function renderAthleteProfile() {
                 <span style="font-size:0.9rem; color:var(--text-muted);">${escapeHtml(c.feeling)}</span>
             </div>
             <div style="display:flex; gap:0.25rem; align-items:center;">
-                <button class="btn-icon" title="Modifier" onclick="openEditCompetition(${idx})">✏️</button>
-                <button class="btn-icon" style="color:var(--danger);" title="Supprimer" onclick="deleteCompetition(${idx})">🗑️</button>
+                <button class="btn-icon" title="Modifier" onclick="openEditCompetition(${idx})">${uiIcon('edit')}</button>
+                <button class="btn-icon" style="color:var(--danger);" title="Supprimer" onclick="deleteCompetition(${idx})">${uiIcon('trash')}</button>
             </div>
         </div>
     `).join('') : "<p style='color:var(--text-muted);'>Aucune compétition enregistrée.</p>";
@@ -4099,6 +4652,7 @@ async function handleAvatarUpload(event) {
         currentUser.avatar = avatar;
         currentUser.profile.avatar = avatar;
         renderAthleteProfile();
+        renderHeaderUser();
     } catch(error) {
         console.error("Erreur de mise à jour de la photo de profil:", error);
         alert("Impossible de modifier la photo de profil : " + error.message);
@@ -4319,7 +4873,7 @@ function renderCalendar(containerId) {
             agendaHtml += `<button type="button" class="calendar-agenda-item${data.active ? ' active-day' : ''}${sessionName ? ' has-session' : ''}${sessionName && sessionDone ? ' session-done' : ''}" onclick="${agendaAction}">
                 <span class="calendar-agenda-date"><small>${weekday}</small><strong>${d}</strong></span>
                 <span class="calendar-agenda-body">
-                    <span class="calendar-agenda-status">${data.active ? 'Entraînement' : 'Repos'}${sessionName && sessionDone ? ' · Réalisée ✓' : ''}</span>
+                    <span class="calendar-agenda-status">${data.active ? 'Entraînement' : 'Repos'}${sessionName && sessionDone ? ' · Réalisée' : ''}</span>
                     ${sessionName ? `<span class="calendar-agenda-session">${escapeHtml(sessionName)}</span>` : ''}
                     ${data.note ? `<span class="calendar-agenda-note">${escapeHtml(data.note)}</span>` : ''}
                 </span>
@@ -4343,8 +4897,19 @@ function openCalNote(dateStr) {
     userAssignments.forEach(a => {
         if (a.isDone && a.id !== data.assignmentId) return; 
         const s = getAssignmentSession(a);
-        if(s) select.innerHTML += `<option value="${escapeHtml(a.id)}" ${a.id === data.assignmentId ? 'selected' : ''}>${a.isDone?'[Validée] ':''}${escapeHtml(s.name)}</option>`;
+        if(s) select.innerHTML += `<option value="${escapeHtml(a.id)}" ${a.id === data.assignmentId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`;
     });
+    // Choix de la séance : panneau avec recherche ; statut du jour : deux boutons
+    enhanceSelect(select, {
+        allowEmpty: 'Aucune séance',
+        search: select.options.length > 8,
+        searchPlaceholder: 'Rechercher une séance…',
+        detail: assignmentId => {
+            const assignment = clubAssignments.find(item => item.id === assignmentId);
+            return assignment ? (assignment.isDone ? 'Séance validée' : 'À réaliser') : '';
+        }
+    });
+    enhanceChoices(document.getElementById('cal-note-status'), { variant: 'pills', label: 'Statut du jour' });
     updateCalNoteSessionButton();
     openModal('modal-calendar-note');
 }
@@ -4386,44 +4951,207 @@ async function saveCalendarNote() {
 }
 
 // TIMER
-let timerInterval = null; let timeRemaining = 0; let isWorkPhase = true; let currentRound = 1;
+// Déroulé : mise en place (5 s, fond orange) → travail → repos → travail … (pas de repos après la dernière série).
+// Bips : courts à 3, 2, 1 s de la fin d'un temps de travail (et de la mise en place), long à chaque transition.
+const TIMER_PREP_SECONDS = 5;
+const TIMER_PHASE_LABELS = { prep: 'Mise en place', work: 'Travail', rest: 'Repos' };
+let timerInterval = null; let timeRemaining = 0; let timerPhase = 'prep'; let currentRound = 1;
+let timerConfig = { work: 10, rest: 20, rounds: 5 };
+let timerAudioCtx = null; let timerWakeLock = null; let timerNativeFullscreen = false;
+
+function timerEl() { return document.getElementById('chrono-container'); }
+
+// --- Son (Web Audio : aucun fichier à charger) ---
+function ensureTimerAudio() {
+    try {
+        if(!timerAudioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if(!Ctx) return;
+            timerAudioCtx = new Ctx();
+        }
+        // Doit être appelé pendant un geste de l'utilisateur (iOS/Chrome bloquent sinon le son)
+        if(timerAudioCtx.state === 'suspended') timerAudioCtx.resume();
+    } catch(e) { timerAudioCtx = null; }
+}
+function playTimerBeep(duration, frequency, delay = 0) {
+    if(!timerAudioCtx) return;
+    try {
+        const start = timerAudioCtx.currentTime + delay;
+        const osc = timerAudioCtx.createOscillator();
+        const gain = timerAudioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.25, start + 0.01);
+        gain.gain.setValueAtTime(0.25, start + duration - 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        osc.connect(gain).connect(timerAudioCtx.destination);
+        osc.start(start);
+        osc.stop(start + duration + 0.02);
+    } catch(e) { /* son indisponible : le chrono continue */ }
+}
+const timerShortBeep = () => playTimerBeep(0.15, 880);
+const timerLongBeep = () => playTimerBeep(0.7, 1320);
+
+// --- Écran allumé pendant le chrono (si le navigateur le permet) ---
+async function requestTimerWakeLock() {
+    try { if('wakeLock' in navigator && !timerWakeLock) timerWakeLock = await navigator.wakeLock.request('screen'); }
+    catch(e) { timerWakeLock = null; }
+}
+function releaseTimerWakeLock() {
+    if(timerWakeLock) { timerWakeLock.release().catch(() => {}); timerWakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && timerInterval) { timerWakeLock = null; requestTimerWakeLock(); }
+});
+
+// --- Affichage ---
+function setTimerState(state) {
+    const timer = timerEl();
+    if(timer) timer.dataset.state = state;
+}
 function updateTimerDisplay() {
     const m = Math.floor(timeRemaining/60).toString().padStart(2,'0');
     const s = (timeRemaining%60).toString().padStart(2,'0');
     document.getElementById('timer-display').textContent = `${m}:${s}`;
-    const timer = document.getElementById('chrono-container');
+    const timer = timerEl();
+    if(timer) timer.dataset.phase = timerPhase;
     const phaseLabel = document.getElementById('timer-phase');
-    if(timer) timer.dataset.phase = isWorkPhase ? 'work' : 'rest';
-    if(phaseLabel) phaseLabel.textContent = isWorkPhase ? 'Travail' : 'Repos';
+    if(phaseLabel) phaseLabel.textContent = TIMER_PHASE_LABELS[timerPhase];
     const roundLabel = document.getElementById('timer-round');
-    const totalRounds = parseInt(document.getElementById('timer-rounds').value) || 5;
-    if(roundLabel) roundLabel.textContent = `Série ${Math.min(currentRound, totalRounds)}/${totalRounds}`;
+    if(roundLabel) roundLabel.textContent = `Série ${Math.min(currentRound, timerConfig.rounds)}/${timerConfig.rounds}`;
+}
+
+// --- Déroulé ---
+function advanceTimerPhase() {
+    if(timerPhase === 'prep') { timerPhase = 'work'; timeRemaining = timerConfig.work; }
+    else if(timerPhase === 'work') {
+        if(currentRound >= timerConfig.rounds) { finishTimer(); return false; }
+        if(timerConfig.rest > 0) { timerPhase = 'rest'; timeRemaining = timerConfig.rest; }
+        else { currentRound++; timeRemaining = timerConfig.work; }
+    } else { timerPhase = 'work'; currentRound++; timeRemaining = timerConfig.work; }
+    timerLongBeep();
+    return true;
+}
+function timerTick() {
+    timeRemaining--;
+    if(timeRemaining <= 0) {
+        if(!advanceTimerPhase()) return;
+    } else if(timeRemaining <= 3 && timerPhase !== 'rest') {
+        timerShortBeep();
+    }
+    updateTimerDisplay();
+}
+function runTimerInterval() {
+    if(timerInterval) return;
+    timerInterval = setInterval(timerTick, 1000);
+    requestTimerWakeLock();
+    const pauseBtn = document.getElementById('timer-pause-btn');
+    if(pauseBtn) pauseBtn.textContent = 'Pause';
+    const timer = timerEl();
+    if(timer) delete timer.dataset.paused;
 }
 function startTimer() {
-    if(timerInterval) return; 
-    const w = parseInt(document.getElementById('timer-work').value)||10; const r = parseInt(document.getElementById('timer-rest').value)||20; const totalRounds = parseInt(document.getElementById('timer-rounds').value)||5;
-    if(timeRemaining === 0) { timeRemaining = w; isWorkPhase = true; currentRound = 1; }
+    if(timerInterval) return;
+    ensureTimerAudio();
+    timerConfig = {
+        work: Math.max(1, parseInt(document.getElementById('timer-work').value) || 10),
+        rest: Math.max(0, parseInt(document.getElementById('timer-rest').value) || 0),
+        rounds: Math.max(1, parseInt(document.getElementById('timer-rounds').value) || 5)
+    };
+    timerPhase = 'prep';
+    timeRemaining = TIMER_PREP_SECONDS;
+    currentRound = 1;
+    const status = document.getElementById('timer-status');
+    if(status) status.textContent = '';
+    setTimerState('running');
     updateTimerDisplay();
-    timerInterval = setInterval(() => {
-        timeRemaining--;
-        if(timeRemaining < 0) { if(isWorkPhase) { isWorkPhase = false; timeRemaining = r; } else { isWorkPhase = true; timeRemaining = w; currentRound++; if(currentRound > totalRounds) { resetTimer(); return alert("Terminé !"); } } }
-        updateTimerDisplay();
-    }, 1000);
+    runTimerInterval();
 }
-function pauseTimer() { clearInterval(timerInterval); timerInterval = null; }
+function pauseTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    releaseTimerWakeLock();
+}
+function togglePauseTimer() {
+    const timer = timerEl();
+    if(!timer || timer.dataset.state !== 'running') return;
+    if(timerInterval) {
+        pauseTimer();
+        timer.dataset.paused = 'true';
+        const pauseBtn = document.getElementById('timer-pause-btn');
+        if(pauseBtn) pauseBtn.textContent = 'Reprendre';
+    } else {
+        ensureTimerAudio();
+        runTimerInterval();
+    }
+}
+function finishTimer() {
+    playTimerBeep(0.35, 1320);
+    playTimerBeep(0.35, 1320, 0.45);
+    playTimerBeep(0.8, 1760, 0.9);
+    resetTimer();
+    const status = document.getElementById('timer-status');
+    if(status) status.textContent = 'Terminé !';
+}
+// Stop : arrête le chrono et réaffiche la configuration
 function resetTimer() {
     pauseTimer();
-    timeRemaining = 0;
-    isWorkPhase = true;
+    exitTimerFullscreen();
+    timerPhase = 'prep';
+    timeRemaining = TIMER_PREP_SECONDS;
     currentRound = 1;
-    document.getElementById('timer-display').textContent = "00:00";
-    const timer = document.getElementById('chrono-container');
-    const phaseLabel = document.getElementById('timer-phase');
-    if(timer) timer.dataset.phase = 'work';
-    if(phaseLabel) phaseLabel.textContent = 'Prêt';
-    const roundLabel = document.getElementById('timer-round');
-    if(roundLabel) roundLabel.textContent = '';
+    const timer = timerEl();
+    if(timer) { timer.dataset.phase = 'work'; delete timer.dataset.paused; }
+    setTimerState('idle');
+    const status = document.getElementById('timer-status');
+    if(status) status.textContent = '';
 }
+
+// --- Plein écran (API native si disponible, sinon superposition CSS, ex. iPhone) ---
+function toggleTimerFullscreen() {
+    const timer = timerEl();
+    if(!timer) return;
+    if(timer.classList.contains('is-fullscreen')) { exitTimerFullscreen(); return; }
+    timer.classList.add('is-fullscreen');
+    document.body.classList.add('timer-fullscreen-open');
+    const request = timer.requestFullscreen || timer.webkitRequestFullscreen;
+    if(request) {
+        try {
+            const result = request.call(timer);
+            timerNativeFullscreen = true;
+            if(result && result.catch) result.catch(() => { timerNativeFullscreen = false; });
+        } catch(e) { timerNativeFullscreen = false; }
+    }
+    updateTimerFullscreenButton();
+}
+function exitTimerFullscreen() {
+    const timer = timerEl();
+    if(timer) timer.classList.remove('is-fullscreen');
+    document.body.classList.remove('timer-fullscreen-open');
+    const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+    if(timerNativeFullscreen && fsElement) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if(exit) { try { const r = exit.call(document); if(r && r.catch) r.catch(() => {}); } catch(e) {} }
+    }
+    timerNativeFullscreen = false;
+    updateTimerFullscreenButton();
+}
+function updateTimerFullscreenButton() {
+    const timer = timerEl();
+    const btn = document.getElementById('timer-fullscreen-btn');
+    if(!timer || !btn) return;
+    const on = timer.classList.contains('is-fullscreen');
+    btn.setAttribute('aria-label', on ? 'Quitter le plein écran' : 'Plein écran');
+    btn.title = on ? 'Quitter le plein écran' : 'Plein écran';
+}
+// Sortie du plein écran natif via la touche Échap / le geste système
+['fullscreenchange', 'webkitfullscreenchange'].forEach(evt => document.addEventListener(evt, () => {
+    if(timerNativeFullscreen && !(document.fullscreenElement || document.webkitFullscreenElement)) {
+        timerNativeFullscreen = false;
+        exitTimerFullscreen();
+    }
+}));
 
 // --- MESSAGERIE CHAT ---
 function toggleChatFullscreen() { document.getElementById('global-chat-panel').classList.toggle('fullscreen'); }
@@ -4461,7 +5189,7 @@ function showChatList() {
 
     const renderUser = (uId, lastMsgStr = '') => {
         const u = clubMembers.find(x=>x.id===uId); if(!u) return '';
-        let avatar = u.avatar ? `<img src="${escapeHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : '👤';
+        let avatar = u.avatar ? `<img src="${escapeHtml(u.avatar)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : uiIcon('user');
         return `<div class="chat-user-item" onclick="openConversation('${escapeHtml(u.id)}')">
                     <div class="avatar">${avatar}</div>
                     <div class="details"><span class="name">${escapeHtml(u.username)}</span><span class="role">${escapeHtml(getRoleLabel(getClubRole(u)))}</span>${lastMsgStr ? `<span class="last-msg">${escapeHtml(lastMsgStr)}</span>` : ''}</div>
@@ -4511,24 +5239,364 @@ async function sendMessage() {
     }
 }
 
-function openCoachSettingsModal() { 
-    document.getElementById('coach-setting-automessage').checked = currentUser.profile.settings.autoMessageDisabled; 
-    openModal('modal-coach-settings'); 
+// === PARAMÈTRES ===
+function renderSettings() {
+    if(!currentUser) return;
+    renderThemeChoice();
+    renderSettingsAccount();
+    renderProfileClubs();
+    renderSettingsFamily();
+    const coachSection = document.getElementById('settings-coach-section');
+    if(coachSection) coachSection.style.display = hasCoachRights() ? '' : 'none';
+    const autoMessage = document.getElementById('coach-setting-automessage');
+    if(autoMessage) autoMessage.checked = Boolean(currentUser.profile && currentUser.profile.settings && currentUser.profile.settings.autoMessageDisabled);
 }
 
 async function saveCoachSettings() {
+    const checkbox = document.getElementById('coach-setting-automessage');
+    const status = document.getElementById('coach-settings-status');
     const settings = {
         ...(currentUser.profile.settings || {}),
-        autoMessageDisabled: document.getElementById('coach-setting-automessage').checked
+        autoMessageDisabled: checkbox.checked
     };
+    if(status) status.textContent = 'Enregistrement…';
     try {
         await savePrivateProfile(currentUser.id, { 'profile.settings': settings });
         currentUser.profile.settings = settings;
-        closeModal('modal-coach-settings');
+        if(status) status.textContent = 'Enregistré';
     } catch(error) {
+        checkbox.checked = !checkbox.checked;
+        if(status) status.textContent = '';
         console.error("Erreur d'enregistrement des paramètres du coach:", error);
         alert("Impossible d'enregistrer les paramètres : " + error.message);
     }
+}
+
+// --- Mon compte : changement d'adresse e-mail et de mot de passe ---
+function renderSettingsAccount() {
+    const section = document.getElementById('settings-account-section');
+    if(!section) return;
+    const authUser = auth.currentUser;
+    // En vue enfant, on ne modifie pas les identifiants du compte connecté
+    const isOwnAccount = !originalParentUser && authUser && authUser.uid === currentUser.id;
+    section.style.display = isOwnAccount ? '' : 'none';
+    const emailLabel = document.getElementById('settings-current-email');
+    if(emailLabel && authUser) emailLabel.textContent = authUser.email || '';
+}
+
+async function reauthenticateCurrentUser(password) {
+    const user = auth.currentUser;
+    if(!user || !user.email) throw new Error("Session expirée, reconnectez-vous.");
+    const credential = firebase.auth.EmailAuthProvider.credential(user.email, password);
+    await user.reauthenticateWithCredential(credential);
+    return user;
+}
+
+function getAccountErrorMessage(error) {
+    switch(error && error.code) {
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+        case 'auth/invalid-login-credentials':
+            return "Mot de passe actuel incorrect.";
+        case 'auth/too-many-requests':
+            return "Trop de tentatives. Patientez quelques minutes avant de réessayer.";
+        case 'auth/invalid-email':
+            return "Cette adresse e-mail n'est pas valide.";
+        case 'auth/email-already-in-use':
+            return "Cette adresse e-mail est déjà utilisée par un autre compte.";
+        case 'auth/weak-password':
+            return "Le nouveau mot de passe doit contenir au moins 6 caractères.";
+        case 'auth/network-request-failed':
+            return "Connexion impossible. Vérifiez votre accès internet, puis réessayez.";
+        default:
+            return (error && error.message) || "Une erreur est survenue.";
+    }
+}
+
+async function changeAccountEmail() {
+    const newEmailInput = document.getElementById('settings-new-email');
+    const passwordInput = document.getElementById('settings-email-password');
+    const submit = document.getElementById('settings-email-submit');
+    const newEmail = newEmailInput.value.trim();
+    const password = passwordInput.value;
+    if(!newEmail || !password) return alert("Saisissez la nouvelle adresse e-mail et votre mot de passe actuel.");
+    if(auth.currentUser && newEmail.toLowerCase() === (auth.currentUser.email || '').toLowerCase()) {
+        return alert("C'est déjà votre adresse e-mail actuelle.");
+    }
+    submit.disabled = true;
+    try {
+        const user = await reauthenticateCurrentUser(password);
+        await user.verifyBeforeUpdateEmail(newEmail);
+        newEmailInput.value = '';
+        passwordInput.value = '';
+        showEmailSentDialog("Un lien de confirmation a été envoyé à " + newEmail + ". Votre adresse sera modifiée dès que vous aurez cliqué dessus ; vous devrez alors vous reconnecter avec la nouvelle adresse.", 'Confirmez la nouvelle adresse');
+    } catch(error) {
+        console.error("Erreur de changement d'adresse e-mail:", error);
+        alert("Impossible de changer l'adresse e-mail : " + getAccountErrorMessage(error));
+    } finally {
+        submit.disabled = false;
+    }
+}
+
+async function changeAccountPassword() {
+    const currentInput = document.getElementById('settings-current-password');
+    const newInput = document.getElementById('settings-new-password');
+    const confirmInput = document.getElementById('settings-new-password-confirm');
+    const submit = document.getElementById('settings-password-submit');
+    const currentPassword = currentInput.value;
+    const newPassword = newInput.value;
+    if(!currentPassword || !newPassword || !confirmInput.value) return alert("Veuillez remplir les trois champs.");
+    if(newPassword.length < 6) return alert("Le nouveau mot de passe doit contenir au moins 6 caractères.");
+    if(newPassword !== confirmInput.value) return alert("Les deux nouveaux mots de passe ne correspondent pas.");
+    if(newPassword === currentPassword) return alert("Le nouveau mot de passe doit être différent de l'actuel.");
+    submit.disabled = true;
+    try {
+        const user = await reauthenticateCurrentUser(currentPassword);
+        await user.updatePassword(newPassword);
+        currentInput.value = '';
+        newInput.value = '';
+        confirmInput.value = '';
+        alert("Votre mot de passe a été modifié.");
+    } catch(error) {
+        console.error("Erreur de changement de mot de passe:", error);
+        alert("Impossible de changer le mot de passe : " + getAccountErrorMessage(error));
+    } finally {
+        submit.disabled = false;
+    }
+}
+
+// --- Thème clair / sombre (préférence enregistrée sur l'appareil) ---
+const THEME_STORAGE_KEY = 'hdf-theme';
+function getThemePreference() {
+    try { return localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light'; } catch(e) { return 'light'; }
+}
+function applyTheme() {
+    const pref = getThemePreference();
+    const dark = pref === 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if(metaTheme) metaTheme.setAttribute('content', dark ? '#0B1220' : '#0055A4');
+    if(window.Chart) {
+        const styles = getComputedStyle(document.documentElement);
+        Chart.defaults.color = styles.getPropertyValue('--text-muted').trim() || '#64748B';
+        Chart.defaults.borderColor = styles.getPropertyValue('--border-color').trim() || '#E2E8F0';
+    }
+}
+function setThemePreference(pref) {
+    try { localStorage.setItem(THEME_STORAGE_KEY, pref); } catch(e) {}
+    applyTheme();
+    renderThemeChoice();
+    // Les graphiques déjà dessinés gardent leurs couleurs : on redessine l'onglet courant
+    refreshCurrentTab();
+}
+function renderThemeChoice() {
+    const pref = getThemePreference();
+    document.querySelectorAll('.theme-option').forEach(button => {
+        const selected = button.dataset.themeChoice === pref;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-checked', String(selected));
+    });
+}
+applyTheme();
+
+// === PARAMÈTRES DU CLUB (photo, villes, activités) — sert aussi à la création d'un club ===
+const CLUB_SETTINGS_ICON = '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+let clubSettingsState = null; // { mode: 'create' | 'edit', clubId, name, avatar, avatarChanged, cities }
+
+// Photo carrée 250 × 250 (JPEG), comme les photos de profil
+function readImageAsSquareDataUrl(file, size = 250) {
+    return new Promise((resolve, reject) => {
+        if(!file || !file.type.startsWith('image/')) return reject(new Error("Sélectionnez un fichier image."));
+        if(file.size > 5 * 1024 * 1024) return reject(new Error("La photo ne peut pas dépasser 5 Mo."));
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Impossible de lire l'image."));
+        reader.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error("Le fichier sélectionné n'est pas une image valide."));
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, size, size);
+                const minDim = Math.min(img.width, img.height);
+                ctx.drawImage(img, (img.width - minDim) / 2, (img.height - minDim) / 2, minDim, minDim, 0, 0, size, size);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function openClubSettings(mode = 'edit', newName = '') {
+    if(mode === 'edit' && !isClubManager()) return alert("Seul un gérant peut modifier les paramètres du club.");
+    const club = mode === 'edit' ? getMyClubObj() : null;
+    const modules = mode === 'edit' ? getClubModules(club.id) : { training: true, school: false };
+    clubSettingsState = {
+        mode,
+        clubId: club ? club.id : null,
+        name: club ? club.name || '' : newName,
+        avatar: club ? club.avatar || null : null,
+        avatarChanged: false,
+        cities: [...((club && club.cities) || [])]
+    };
+    document.getElementById('club-settings-title').textContent = mode === 'create' ? 'Créer un club' : 'Paramètres du club';
+    const nameInput = document.getElementById('club-settings-name');
+    nameInput.value = clubSettingsState.name;
+    nameInput.readOnly = mode === 'edit';
+    document.getElementById('club-settings-name-hint').hidden = mode !== 'edit';
+    document.getElementById('club-settings-training').checked = modules.training;
+    document.getElementById('club-settings-school').checked = modules.school;
+    document.getElementById('club-settings-city-input').value = '';
+    document.getElementById('club-settings-save').textContent = mode === 'create' ? 'Créer le club' : 'Enregistrer';
+    renderClubSettingsAvatar();
+    renderClubSettingsCities();
+    renderClubSettingsModules();
+    openModal('modal-club-settings');
+}
+
+function renderClubSettingsAvatar() {
+    const state = clubSettingsState;
+    const preview = document.getElementById('club-settings-avatar');
+    if(!state || !preview) return;
+    const initial = escapeHtml((document.getElementById('club-settings-name').value.trim() || 'C').charAt(0).toUpperCase());
+    preview.innerHTML = state.avatar ? `<img src="${escapeHtml(state.avatar)}" alt="">` : `<span>${initial}</span>`;
+    document.getElementById('club-settings-avatar-remove').hidden = !state.avatar;
+    document.getElementById('club-settings-avatar-pick').textContent = state.avatar ? 'Changer la photo' : 'Ajouter une photo';
+}
+async function handleClubSettingsAvatar(event) {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = '';
+    if(!file || !clubSettingsState) return;
+    try {
+        clubSettingsState.avatar = await readImageAsSquareDataUrl(file);
+        clubSettingsState.avatarChanged = true;
+        renderClubSettingsAvatar();
+    } catch(error) {
+        alert(error.message);
+    }
+}
+function removeClubSettingsAvatar() {
+    if(!clubSettingsState) return;
+    clubSettingsState.avatar = null;
+    clubSettingsState.avatarChanged = true;
+    renderClubSettingsAvatar();
+}
+
+function renderClubSettingsCities() {
+    const state = clubSettingsState;
+    const list = document.getElementById('club-settings-cities');
+    if(!state || !list) return;
+    list.innerHTML = state.cities.map((city, index) => `
+        <span class="club-city-chip">${escapeHtml(city)}
+            <button type="button" title="Retirer ${escapeHtml(city)}" aria-label="Retirer ${escapeHtml(city)}" onclick="removeClubSettingsCity(${index})">${uiIcon('close')}</button>
+        </span>`).join('') || '<span class="school-muted">Aucune ville renseignée.</span>';
+}
+function addClubSettingsCity() {
+    const state = clubSettingsState;
+    const input = document.getElementById('club-settings-city-input');
+    const city = input.value.trim().replace(/\s+/g, ' ');
+    if(!state || !city) return;
+    if(city.length > 60) return alert("Le nom de la ville ne peut pas dépasser 60 caractères.");
+    if(state.cities.some(item => item.toLocaleLowerCase('fr') === city.toLocaleLowerCase('fr'))) return alert("Cette ville est déjà dans la liste.");
+    if(state.cities.length >= 10) return alert("10 villes au maximum.");
+    state.cities.push(city);
+    input.value = '';
+    input.focus();
+    renderClubSettingsCities();
+}
+function removeClubSettingsCity(index) {
+    if(!clubSettingsState) return;
+    clubSettingsState.cities.splice(index, 1);
+    renderClubSettingsCities();
+}
+
+// Cartes « Entraînement » / « École d'escalade » : l'apparence suit l'état des cases
+function renderClubSettingsModules() {
+    document.querySelectorAll('.club-activity-option').forEach(option => {
+        const input = option.querySelector('input');
+        option.classList.toggle('selected', input.checked);
+    });
+    const training = document.getElementById('club-settings-training').checked;
+    const school = document.getElementById('club-settings-school').checked;
+    const hint = document.getElementById('club-settings-modules-hint');
+    hint.textContent = !training && !school
+        ? "Cochez au moins une activité."
+        : !training
+            ? "École seule : chacun, gérant compris, a au plus les droits d'un initiateur. Les profils d'entraînement des membres ne sont pas accessibles."
+            : !school
+                ? "Entraînement seul : l'onglet École d'escalade n'est pas affiché."
+                : "Les deux activités sont actives.";
+    hint.classList.toggle('is-error', !training && !school);
+}
+
+async function saveClubSettings() {
+    const state = clubSettingsState;
+    if(!state) return;
+    const modules = {
+        training: document.getElementById('club-settings-training').checked,
+        school: document.getElementById('club-settings-school').checked
+    };
+    if(!modules.training && !modules.school) return alert("Cochez au moins une activité : entraînement ou école d'escalade.");
+    // Une ville saisie mais pas encore ajoutée est prise en compte
+    if(document.getElementById('club-settings-city-input').value.trim()) addClubSettingsCity();
+    if(state.mode === 'create') {
+        if(!state.cities.length) return alert("Renseignez au moins une ville.");
+        return createClub({
+            name: document.getElementById('club-settings-name').value.trim(),
+            avatar: state.avatar,
+            cities: state.cities,
+            modules
+        });
+    }
+
+    const button = document.getElementById('club-settings-save');
+    button.disabled = true;
+    try {
+        const updates = { cities: state.cities, modules };
+        if(state.avatarChanged) updates.avatar = state.avatar || firebase.firestore.FieldValue.delete();
+        await db.collection('clubs').doc(state.clubId).update(updates);
+        const club = allClubs.find(item => item.id === state.clubId);
+        const modulesChanged = club && JSON.stringify(getClubModules(state.clubId)) !== JSON.stringify(modules);
+        if(club) {
+            club.cities = state.cities;
+            club.modules = modules;
+            if(state.avatarChanged) club.avatar = state.avatar || null;
+        }
+        closeModal('modal-club-settings');
+        clubSettingsState = null;
+        if(modulesChanged) {
+            // Les droits et les onglets dépendent des activités du club
+            startRealtimeListeners(currentUser.clubId);
+            showApp();
+        } else {
+            refreshCurrentTab();
+        }
+    } catch(error) {
+        console.error("Erreur d'enregistrement des paramètres du club:", error);
+        alert("Impossible d'enregistrer les paramètres du club : " + error.message);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+// Rôle d'un membre depuis la liste « Membres du club » (utile quand l'onglet coach n'existe pas : club école seule)
+let roleModalMemberId = null;
+function openMemberRoleModal(memberId) {
+    if(!isClubManager()) return;
+    const member = clubMembers.find(user => user.id === memberId);
+    if(!member) return;
+    roleModalMemberId = memberId;
+    document.getElementById('member-role-title').textContent = member.username || 'Membre';
+    const select = document.getElementById('member-role-select');
+    select.value = getClubRole(member, currentUser.clubId);
+    enhanceRoleChoices(select);
+    openModal('modal-member-role');
+}
+function saveMemberRole() {
+    if(roleModalMemberId) updateClubMemberRole(roleModalMemberId, 'member-role-select');
 }
 
 // Lancement Initial

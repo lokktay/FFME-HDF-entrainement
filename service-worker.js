@@ -1,9 +1,12 @@
-const CACHE_NAME = 'ffme-cache-v19';
+// À chaque mise en ligne : incrémenter ASSET_VERSION ici ET les « ?v=… » de index.html
+const ASSET_VERSION = '20';
+const CACHE_NAME = `ffme-cache-v${ASSET_VERSION}`;
 const urlsToCache = [
   './',
   'index.html',
-  'styles.css',
-  'app.js',
+  `styles.css?v=${ASSET_VERSION}`,
+  `school.js?v=${ASSET_VERSION}`,
+  `app.js?v=${ASSET_VERSION}`,
   'manifest.json',
   'icon-192.png',
   'icon-512.png'
@@ -36,8 +39,13 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
 
+  // Hors navigation, on revalide auprès du serveur plutôt que de prendre une copie périmée
+  // du cache HTTP du navigateur (GitHub Pages met les fichiers en cache 10 min).
+  const networkRequest = event.request.mode === 'navigate'
+    ? fetch(event.request)
+    : fetch(event.request, { cache: 'no-cache' });
   event.respondWith(
-    fetch(event.request).then(response => {
+    networkRequest.then(response => {
       if (!response || response.status !== 200 || response.type !== 'basic') return response;
       return caches.open(CACHE_NAME)
         .then(cache => cache.put(event.request, response.clone()))

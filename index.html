@@ -5,18 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>FFME - Entraînement Escalade</title>
     
-    <!-- Bibliothèques externes -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- FIREBASE (Les 3 scripts indispensables) -->
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+    <!-- Thème appliqué avant l'affichage, pour éviter un flash clair en mode sombre -->
+    <script>
+        (function() {
+            var dark = false;
+            try { dark = localStorage.getItem('hdf-theme') === 'dark'; } catch(e) {}
+            document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        })();
+    </script>
+
+    <!-- Connexions anticipées aux serveurs externes -->
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Scripts en « defer » : téléchargés en parallèle sans bloquer l'affichage, exécutés dans l'ordre
+         (Chart.js, puis Firebase, puis app.js en bas de page) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <!-- Lien vers notre fichier de style séparé -->
-    <link rel="stylesheet" href="styles.css">
+
+    <!-- Lien vers notre fichier de style séparé.
+         ?v=… : à incrémenter avec CACHE_NAME (service-worker.js) à chaque mise en ligne, pour que
+         le navigateur ne mélange jamais un ancien styles.css/app.js avec le nouveau index.html -->
+    <link rel="stylesheet" href="styles.css?v=20">
     <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0055A4">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -44,11 +61,14 @@
                     <input type="email" class="form-control" id="login-email" placeholder="votre@email.com">
                 </div>
                 <div class="form-group">
-                    <label>Mot de passe</label>
-                    <input type="password" class="form-control" id="login-password" placeholder="••••••••">
+                    <label for="login-password">Mot de passe</label>
+                    <input type="password" class="form-control" id="login-password" placeholder="••••••••" autocomplete="current-password">
+                    <div class="password-options">
+                        <label class="show-password"><input type="checkbox" onchange="togglePasswordVisibility('login-password', this)"><span>voir le mot de passe</span></label>
+                        <button type="button" class="btn-text forgot-password-link" onclick="resetPassword()">Mot de passe oublié ?</button>
+                    </div>
                 </div>
-                <button class="btn-text" onclick="resetPassword()">Mot de passe oublié ?</button>
-                <button class="btn-primary" style="width:100%; margin-top: 1.5rem; padding: 0.85rem;" onclick="login()">Se connecter</button>
+                <button class="btn-primary" style="width:100%; margin-top: 1.25rem; padding: 0.85rem;" onclick="login()">Se connecter</button>
             </div>
             
             <div id="form-register" style="display: none;">
@@ -58,11 +78,16 @@
                 </div>
                 <div class="form-group">
                     <label>Adresse e-mail</label>
-                    <input type="email" class="form-control" id="reg-email" placeholder="votre@email.com">
+                    <input type="email" class="form-control" id="reg-email" placeholder="votre@email.com" autocomplete="email">
                 </div>
                 <div class="form-group">
-                    <label>Mot de passe</label>
-                    <input type="password" class="form-control" id="reg-password" placeholder="••••••••">
+                    <label for="reg-password">Mot de passe</label>
+                    <input type="password" class="form-control" id="reg-password" placeholder="6 caractères minimum" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="reg-password-confirm">Confirmer le mot de passe</label>
+                    <input type="password" class="form-control" id="reg-password-confirm" placeholder="Saisissez-le à nouveau" autocomplete="new-password">
+                    <label class="show-password"><input type="checkbox" onchange="togglePasswordVisibility('reg-password,reg-password-confirm', this)"><span>voir les mots de passe</span></label>
                 </div>
                 <div class="form-group">
                     <label>Date de naissance</label>
@@ -73,11 +98,19 @@
                     <label>Club</label>
                     <select class="form-control" id="reg-club" onchange="checkNewClubAuth(this)"></select>
                 </div>
-                <div class="form-group" id="reg-new-club-group" style="display:none;">
-                    <label>Nom du club</label>
+                <div class="form-group reg-new-club-group" id="reg-new-club-group" style="display:none;">
+                    <label for="reg-new-club">Nom du club</label>
                     <input type="text" class="form-control" id="reg-new-club" placeholder="Ex: Club Alpin Français">
+                    <label for="reg-new-club-cities" style="margin-top:0.75rem;">Ville(s) du club</label>
+                    <input type="text" class="form-control" id="reg-new-club-cities" maxlength="300" placeholder="Ex : Lille, Roubaix (séparées par des virgules)">
+                    <label style="margin-top:0.75rem;">Activités du club</label>
+                    <div class="club-activity-choices">
+                        <label class="club-activity-option selected"><input type="checkbox" id="reg-new-club-training" checked onchange="this.closest('.club-activity-option').classList.toggle('selected', this.checked)"><span class="club-activity-text"><strong>Entraînement</strong><small>Séances, profils, suivi des membres</small></span></label>
+                        <label class="club-activity-option"><input type="checkbox" id="reg-new-club-school" onchange="this.closest('.club-activity-option').classList.toggle('selected', this.checked)"><span class="club-activity-text"><strong>École d'escalade</strong><small>Cours récurrents, élèves, appel</small></span></label>
+                    </div>
+                    <p class="form-hint">La photo du club pourra être ajoutée ensuite dans ses paramètres.</p>
                 </div>
-                <div class="form-group" id="reg-parent-code-group" style="display:none; background: #F1F5F9; padding: 1rem; border-radius: var(--radius-md);">
+                <div class="form-group" id="reg-parent-code-group" style="display:none; background: var(--surface-subtle); padding: 1rem; border-radius: var(--radius-md);">
                     <label style="color: var(--ffme-blue);">Code privé de l'enfant (optionnel)</label>
                     <input type="text" class="form-control" id="reg-link-code" maxlength="10" autocomplete="off" autocapitalize="characters" placeholder="Code à 10 caractères communiqué par l'enfant">
                 </div>
@@ -92,7 +125,7 @@
             <div class="header-left">
                 <h1>HDF Training</h1>
                 <div class="user-info" onclick="toggleAccountMenu()">
-                    <span id="header-user-info-text">👤 Pseudo</span>
+                    <span id="header-user-info-text" class="header-user-info"></span>
                     <div id="account-dropdown" class="account-dropdown"></div>
                 </div>
             </div>
@@ -100,7 +133,7 @@
                 <!-- Coach Only Tabs -->
                 <button id="nav-coach-dashboard" class="coach-only" onclick="switchTab('coach-dashboard')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9 11h6M9 15h4"/></svg></span><span class="nav-label">Séances & Blocs</span><span class="nav-label-short" aria-hidden="true">Séances</span></button>
                 <button id="nav-coach-athletes" class="coach-only" onclick="switchTab('coach-athletes')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4c2.1.7 3.5 2.8 3.5 5.6"/></svg></span><span class="nav-label">Membres du Club</span><span class="nav-label-short" aria-hidden="true">Membres</span></button>
-                <button id="nav-coach-settings" class="coach-only" onclick="openCoachSettingsModal()"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></span><span class="nav-label">Paramètres</span><span class="nav-label-short" aria-hidden="true">Réglages</span></button>
+                <button id="nav-school" style="display:none;" onclick="switchTab('school')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 20l6.5-11 4 6.5 2.5-4L21 20z"/><path d="M8 4.5l1.5-1.5L11 4.5"/></svg></span><span class="nav-label">École d'escalade</span><span class="nav-label-short" aria-hidden="true">École</span></button>
 
                 <!-- Athlete Tabs -->
                 <button id="nav-athlete-sessions" onclick="switchTab('athlete-sessions')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M9 15l2 2 4-4"/></svg></span><span class="nav-label">Mes Séances</span><span class="nav-label-short" aria-hidden="true">À faire</span></button>
@@ -110,7 +143,8 @@
 
                 <button id="nav-platform-admin" style="display:none;" onclick="switchTab('platform-admin')"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg></span><span class="nav-label">Administration</span><span class="nav-label-short" aria-hidden="true">Admin</span></button>
 
-                <button id="btn-logout" class="btn-outline" style="margin-left: auto;" onclick="logout()" aria-label="Déconnexion" title="Déconnexion"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7a8 8 0 1 0 11.4 0"/></svg></span><span class="nav-label">Déconnexion</span></button>
+                <button id="nav-settings" class="btn-outline header-icon-btn" onclick="switchTab('settings')" aria-label="Paramètres" title="Paramètres"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span class="nav-label">Paramètres</span></button>
+                <button id="btn-logout" class="btn-outline" onclick="logout()" aria-label="Déconnexion" title="Déconnexion"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v9"/><path d="M6.3 7a8 8 0 1 0 11.4 0"/></svg></span><span class="nav-label">Déconnexion</span></button>
             </nav>
         </header>
 
@@ -161,15 +195,15 @@
         </main>
 
         <!-- CHAT FLOAT BTN -->
-        <button class="chat-btn-float" onclick="toggleChat()">💬</button>
+        <button class="chat-btn-float" onclick="toggleChat()" aria-label="Messagerie" title="Messagerie"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.8A8 8 0 1 1 21 12z"/></svg></button>
         
         <!-- CHAT PANEL -->
         <div id="global-chat-panel" class="chat-panel">
             <div class="chat-header">
-                <button id="chat-back-btn" class="chat-header-btn" style="display:none;" onclick="showChatList()">⬅</button>
+                <button id="chat-back-btn" class="chat-header-btn" style="display:none;" onclick="showChatList()" aria-label="Retour" title="Retour"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
                 <span id="chat-header-title" style="flex:1; text-align:center;">Messagerie</span>
-                <button class="chat-header-btn" onclick="toggleChatFullscreen()" title="Plein écran">⛶</button>
-                <button class="chat-header-btn" onclick="toggleChat()">✖</button>
+                <button class="chat-header-btn" onclick="toggleChatFullscreen()" title="Plein écran" aria-label="Plein écran"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+                <button class="chat-header-btn" onclick="toggleChat()" aria-label="Fermer" title="Fermer"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
             </div>
             
             <div id="chat-view-list">
@@ -204,23 +238,34 @@
             <div class="flex-between">
                 <h2 class="section-title">Espace Entraînement</h2>
                 <div style="display: flex; gap: 0.75rem;">
-                    <button class="btn-outline" onclick="openCreateBlock()">+ Créer Bloc</button>
-                    <button class="btn-primary" onclick="openSessionBuilder()">+ Créer Séance</button>
+                    <button class="btn-outline" onclick="openCreateBlock()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Créer un bloc</button>
+                    <button class="btn-primary" onclick="openSessionBuilder()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Créer une séance</button>
                 </div>
             </div>
             <hr>
-            <div class="flex-between" style="margin-bottom: 1.5rem;">
+            <div class="flex-between">
                 <div class="internal-tabs" id="coach-session-tabs">
                     <button class="active" id="tab-btn-perso" onclick="setSessionLibraryTab('personal')">Mes Séances (Privées)</button>
                     <button id="tab-btn-club" onclick="setSessionLibraryTab('club')">Bibliothèque du Club</button>
                     <button id="tab-btn-global" onclick="setSessionLibraryTab('global')">Bibliothèque</button>
                 </div>
-                <input type="text" id="search-sessions" class="search-bar" placeholder="Rechercher une séance..." onkeyup="updateCoachSessionSearch(this.value)">
+                <div class="session-toolbar">
+                    <input type="text" id="search-sessions" class="search-bar" placeholder="Rechercher une séance..." onkeyup="updateCoachSessionSearch(this.value)">
+                    <div class="session-sort">
+                        <span class="sr-only">Trier les séances</span>
+                        <select id="sort-sessions" class="form-control" onchange="setCoachSessionSort(this.value)">
+                            <option value="recent">Plus récentes</option>
+                            <option value="alpha">Ordre alphabétique</option>
+                            <option value="assigned">Plus attribuées</option>
+                        </select>
+                    </div>
+                </div>
             </div>
-            <div id="coach-sessions-grid" class="grid" style="margin-bottom: 3.5rem;"></div>
+            <div id="coach-sessions-grid" class="grid"></div>
+            <div id="coach-sessions-more" class="show-more-row"></div>
             <hr>
-            <div class="flex-between" style="margin-bottom: 1.5rem;">
-                <h3 class="section-title" style="font-size: 1.3rem;">Ressources : Mes Exercices & Blocs (Personnels)</h3>
+            <div class="flex-between">
+                <h3 class="section-title section-title-sm">Mes exercices &amp; blocs</h3>
                 <input type="text" id="search-blocks" class="search-bar" placeholder="Rechercher un bloc..." onkeyup="updateCoachBlockSearch(this.value)">
             </div>
             <div id="coach-dashboard-filters" class="filter-tags"></div>
@@ -231,7 +276,7 @@
         <!-- [COACH] ATHLETES SUIVI & GROUPES -->
         <!-- ============================================== -->
         <main id="coach-athletes-space" class="tab-content">
-            <div class="flex-between" style="margin-bottom: 2rem;">
+            <div class="flex-between">
                 <h2 class="section-title">Membres du Club</h2>
                 <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
                     <button class="btn-outline" onclick="openManageGroupsModal()">Gérer mes groupes</button>
@@ -242,7 +287,7 @@
             <input id="club-avatar-input" type="file" accept="image/*" class="avatar-input" onchange="handleClubAvatarUpload(event)">
             
             <div id="coach-athletes-view" style="display:none;">
-                <button class="btn-outline" style="margin-bottom: 1.5rem;" onclick="backToGroupsView()">⬅ Retour aux groupes</button>
+                <button class="btn-outline back-button" onclick="backToGroupsView()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Retour aux groupes</button>
                 <div class="group-view-heading">
                     <h3 id="current-group-title" style="margin-top:0; margin-bottom:0; font-size:1.3rem; color:var(--ffme-blue-dark);"></h3>
                     <label id="group-view-notify-control" class="group-view-notify" style="display:none;">
@@ -258,9 +303,9 @@
         <!-- [ATHLETE] SESSIONS -->
         <!-- ============================================== -->
         <main id="athlete-sessions-space" class="tab-content">
-            <h2 class="section-title" style="margin-bottom: 2rem;">Mes Séances à réaliser</h2>
+            <h2 class="section-title page-title">Mes séances à réaliser</h2>
             <div id="classic-sessions-grid" class="grid"></div>
-            <h2 class="section-title" style="margin-top: 4rem; margin-bottom: 1.5rem; color: var(--text-muted); border-bottom: 2px solid var(--border-color); padding-bottom: 1rem;">Historique des séances réalisées</h2>
+            <h2 class="section-title section-title-sm section-divider">Historique des séances réalisées</h2>
             <div id="done-sessions-grid" class="grid" style="opacity: 0.9;"></div>
         </main>
 
@@ -285,26 +330,31 @@
         <!-- [ATHLETE] PROFILE -->
         <!-- ============================================== -->
         <main id="athlete-profile-space" class="tab-content">
-            <h2 class="section-title" style="margin-bottom: 2rem;">Mon Profil</h2>
+            <h2 class="section-title page-title">Mon profil</h2>
             <div class="profile-header">
                 <div class="avatar-wrapper">
                     <img id="profile-avatar-preview" src="" style="display:none;" />
-                    <span id="profile-avatar-placeholder">👤</span>
+                    <span id="profile-avatar-placeholder"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></span>
                     <label for="profile-avatar-input" class="avatar-upload-btn">Modifier</label>
                     <input type="file" id="profile-avatar-input" class="avatar-input" accept="image/*" onchange="handleAvatarUpload(event)">
                 </div>
 
                 <div style="flex: 1; width: 100%;">
                     <h3 style="margin-bottom: 0.25rem; font-size: 1.3rem; color: var(--ffme-blue); font-weight: 800;" id="profile-display-name">Mon Profil</h3>
-                    <div id="profile-parent-code-display"></div>
                     <label style="font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-top: 0.75rem; margin-bottom: 0.25rem; display: block;">Mes Objectifs</label>
                     <textarea id="profile-objectives" class="form-control" style="min-height: 60px; margin-bottom: 0.75rem;"></textarea>
                     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                         <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="saveProfileObjectives()">Enregistrer</button>
-                        <button class="btn-outline" style="padding: 0.5rem 1rem; font-size: 0.9rem;" onclick="openLinkChildModal()" id="btn-link-child" style="display:none;">+ Lier un enfant</button>
                     </div>
-                    <div id="profile-linked-children-list" style="margin-top: 1rem; font-size:0.85rem; display:flex; gap:0.5rem; flex-wrap:wrap;"></div>
                 </div>
+            </div>
+
+            <div class="profile-section">
+                <div class="flex-between section-header">
+                    <h3>Mes cycles d'entraînement</h3>
+                    <button id="profile-new-cycle" class="btn-outline" onclick="openCycleModal(currentUser.id)"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nouveau cycle</button>
+                </div>
+                <div id="profile-cycles-list" class="cycle-list"></div>
             </div>
 
             <div id="role-request-section" class="profile-section">
@@ -312,7 +362,9 @@
                 <p>Votre demande sera envoyée aux gérants du club actif.</p>
                 <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
                     <select id="role-request-select" class="form-control" style="max-width:320px;">
+                        <option value="initiateur">Initiateur</option>
                         <option value="coach">Coach</option>
+                        <option value="entraineur">Entraîneur</option>
                         <option value="gerant">Gérant du club</option>
                     </select>
                     <button id="role-request-submit" class="btn-primary" onclick="submitRoleRequest()">Envoyer la demande</button>
@@ -326,7 +378,7 @@
             </div>
             
             <div class="profile-section">
-                <div class="flex-between" style="margin-bottom: 1.5rem; border-bottom: 2px solid var(--bg-color); padding-bottom: 1rem;">
+                <div class="flex-between section-header">
                     <h3 style="margin:0; border:none; padding:0;">Toile des compétences</h3>
                     <button class="btn-outline" onclick="openSkillsModal()">Mettre à jour mon profil</button>
                 </div>
@@ -339,17 +391,68 @@
             <div class="profile-section">
                 <div class="flex-between" style="border-bottom: 2px solid var(--bg-color); padding-bottom: 1rem; margin-bottom:1rem;">
                     <h3 style="margin:0; border:none; padding:0;">Historique des Compétitions</h3>
-                    <button class="btn-outline" onclick="openCompModal()">+ Ajouter Compétition</button>
+                    <button class="btn-outline" onclick="openCompModal()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Ajouter une compétition</button>
                 </div>
                 <div id="athlete-competitions-list"></div>
             </div>
 
-            <div class="profile-section">
-            <h3>Mes clubs</h3>
-            <div id="profile-clubs-list"></div>
-            <div class="club-management-panel">
+
+            <!-- Notifications push de cet appareil (visible seulement quand le Worker est configuré) -->
+            <div id="push-entry" class="install-app-entry push-entry" style="display:none;">
+                <button id="push-toggle" type="button" class="btn-outline">Activer les notifications</button>
+                <p id="push-status" class="install-app-help"></p>
+            </div>
+
+            <!-- Installation discrète de l'application (icône sur l'écran d'accueil / le bureau) -->
+            <div id="install-app-entry" class="install-app-entry" style="display:none;">
+                <button type="button" class="btn-text" onclick="installApp()">Installer l'application sur cet appareil</button>
+                <p id="install-app-help" class="install-app-help" hidden></p>
+            </div>
+        </main>
+
+        <!-- ÉCOLE D'ESCALADE (gérant : gestion ; initiateurs / coachs / entraîneurs : leurs cours) -->
+        <main id="school-space" class="tab-content">
+            <div class="flex-between">
+                <h2 class="section-title">École d'escalade</h2>
+                <div class="school-header-actions">
+                <button id="school-club-settings" type="button" class="btn-outline school-settings-button" onclick="openClubSettings()" title="Paramètres du club" aria-label="Paramètres du club"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+                <button id="school-create-course" class="btn-primary" onclick="openCourseEditor()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Créer un cours</button>
+                </div>
+            </div>
+            <!-- Encadrants : les cours qu'ils gèrent (le gérant voit tous les cours) -->
+            <section id="school-staff-section">
+                <h3 id="school-staff-title" class="section-title section-title-sm school-section-title">Cours que j'encadre</h3>
+                <div id="school-courses-view" class="grid"></div>
+            </section>
+            <!-- Élèves : leurs cours, dates et présences -->
+            <section id="school-student-section" style="display:none;">
+                <h3 class="section-title section-title-sm school-section-title">Mes cours</h3>
+                <div class="school-legend"><span class="school-legend-item present">Présent</span><span class="school-legend-item absent">Absent</span><span class="school-legend-item upcoming">À venir</span></div>
+                <div id="school-student-courses" class="school-student-courses"></div>
+            </section>
+            <div id="school-course-detail" style="display:none;"></div>
+        </main>
+
+        <!-- PARAMÈTRES (bouton engrenage à côté de la déconnexion) -->
+        <main id="settings-space" class="tab-content">
+            <h2 class="section-title page-title">Paramètres</h2>
+
+            <div class="profile-section settings-section">
+                <h3>Apparence</h3>
+                <p class="settings-hint">Ce choix est propre à cet appareil.</p>
+                <div class="theme-switch" role="radiogroup" aria-label="Thème de l'application">
+                    <button type="button" class="theme-option" data-theme-choice="light" role="radio" aria-checked="false" onclick="setThemePreference('light')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Clair</span></button>
+                    <button type="button" class="theme-option" data-theme-choice="dark" role="radio" aria-checked="false" onclick="setThemePreference('dark')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span>Sombre</span></button>
+                </div>
+            </div>
+
+            <div class="profile-section settings-section">
+                <h3>Mes clubs</h3>
+                <p class="settings-hint">Choisissez le club actif, rejoignez-en un autre ou créez le vôtre.</p>
+                <div id="profile-clubs-list"></div>
+                <div class="club-management-panel">
                 <div class="club-management-heading">
-                    <span class="club-panel-icon" aria-hidden="true">＋</span>
+                    <span class="club-panel-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
                     <div>
                         <strong>Gérer mes clubs</strong>
                         <p>Rejoignez un club existant ou créez le vôtre.</p>
@@ -371,16 +474,60 @@
             </div>
             </div>
 
-            <!-- Notifications push de cet appareil (visible seulement quand le Worker est configuré) -->
-            <div id="push-entry" class="install-app-entry push-entry" style="display:none;">
-                <button id="push-toggle" type="button" class="btn-outline">Activer les notifications</button>
-                <p id="push-status" class="install-app-help"></p>
+            <div id="settings-account-section" class="profile-section settings-section">
+                <h3>Mon compte</h3>
+                <p class="settings-hint">Adresse actuelle : <strong id="settings-current-email"></strong></p>
+
+                <div class="settings-account-grid">
+                <div class="settings-subsection">
+                    <h4>Changer d'adresse e-mail</h4>
+                    <div class="form-group">
+                        <label for="settings-new-email">Nouvelle adresse e-mail</label>
+                        <input type="email" class="form-control" id="settings-new-email" placeholder="nouvelle@email.com" autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label for="settings-email-password">Mot de passe actuel</label>
+                        <input type="password" class="form-control" id="settings-email-password" placeholder="••••••••" autocomplete="current-password">
+                        <label class="show-password"><input type="checkbox" onchange="togglePasswordVisibility('settings-email-password', this)"><span>voir le mot de passe</span></label>
+                    </div>
+                    <button type="button" class="btn-primary" id="settings-email-submit" onclick="changeAccountEmail()">Changer l'adresse e-mail</button>
+                </div>
+
+                <div class="settings-subsection">
+                    <h4>Changer de mot de passe</h4>
+                    <div class="form-group">
+                        <label for="settings-current-password">Mot de passe actuel</label>
+                        <input type="password" class="form-control" id="settings-current-password" placeholder="••••••••" autocomplete="current-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="settings-new-password">Nouveau mot de passe</label>
+                        <input type="password" class="form-control" id="settings-new-password" placeholder="6 caractères minimum" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label for="settings-new-password-confirm">Confirmer le nouveau mot de passe</label>
+                        <input type="password" class="form-control" id="settings-new-password-confirm" placeholder="Saisissez-le à nouveau" autocomplete="new-password">
+                        <label class="show-password"><input type="checkbox" onchange="togglePasswordVisibility('settings-current-password,settings-new-password,settings-new-password-confirm', this)"><span>voir les mots de passe</span></label>
+                    </div>
+                    <button type="button" class="btn-primary" id="settings-password-submit" onclick="changeAccountPassword()">Changer le mot de passe</button>
+                </div>
+                </div>
             </div>
 
-            <!-- Installation discrète de l'application (icône sur l'écran d'accueil / le bureau) -->
-            <div id="install-app-entry" class="install-app-entry" style="display:none;">
-                <button type="button" class="btn-text" onclick="installApp()">Installer l'application sur cet appareil</button>
-                <p id="install-app-help" class="install-app-help" hidden></p>
+            <div id="settings-family-section" class="profile-section settings-section">
+                <h3>Comptes parent / enfant</h3>
+                <div id="profile-parent-code-display"></div>
+                <button class="btn-outline" onclick="openLinkChildModal()" id="btn-link-child" style="display:none;">Lier un compte enfant</button>
+                <div id="profile-linked-children-list" class="settings-linked-list"></div>
+                <p id="settings-family-empty" class="settings-hint" style="display:none;">Aucune option parent / enfant n'est disponible pour ce compte.</p>
+            </div>
+
+            <div id="settings-coach-section" class="profile-section settings-section coach-settings-section" style="display:none;">
+                <h3>Coach</h3>
+                <label class="settings-toggle">
+                    <input type="checkbox" id="coach-setting-automessage" onchange="saveCoachSettings()">
+                    <span>Désactiver l'envoi automatique du message d'alerte fatigue</span>
+                </label>
+                <span id="coach-settings-status" class="settings-hint" aria-live="polite"></span>
             </div>
         </main>
     </div>
@@ -438,13 +585,21 @@
 
     <div id="modal-link-child" class="modal-overlay"><div class="modal" style="max-width:400px;"><div class="modal-header"><h2>Lier un compte enfant</h2><button class="close-btn" onclick="closeModal('modal-link-child')">&times;</button></div><div class="form-group"><label>Code privé communiqué par l'enfant :</label><input type="text" id="input-link-child" class="form-control" maxlength="10" autocomplete="off" autocapitalize="characters" placeholder="Code à 10 caractères"></div><button class="btn-primary" style="width:100%" onclick="linkChildAccount()">Lier le compte</button></div></div>
     <div id="modal-competition" class="modal-overlay"><div class="modal" style="max-width:400px;"><div class="modal-header"><h2 id="modal-comp-title-text">Ajouter une compétition</h2><button class="close-btn" onclick="closeModal('modal-competition')">&times;</button></div><div class="form-group"><label>Type</label><input type="text" id="comp-type" class="form-control" placeholder="Ex: Championnat Régional"></div><div class="form-group"><label>Place / Résultat</label><input type="text" id="comp-place" class="form-control" placeholder="Ex: 3ème"></div><div class="form-group"><label>Ressenti</label><textarea id="comp-feeling" class="form-control" placeholder="Sensations, points forts, axes d'amélioration..."></textarea></div><button class="btn-primary" style="width:100%" onclick="saveCompetition()">Enregistrer</button></div></div>
-    <div id="modal-coach-settings" class="modal-overlay"><div class="modal" style="max-width:450px;"><div class="modal-header"><h2>Paramètres Coach</h2><button class="close-btn" onclick="closeModal('modal-coach-settings')">&times;</button></div><label style="display:flex; align-items:center; gap:0.75rem; font-weight:600; cursor:pointer;"><input type="checkbox" id="coach-setting-automessage" style="width:1.2rem; height:1.2rem; accent-color:var(--ffme-blue);"> Désactiver l'envoi auto du message d'alerte fatigue</label><button class="btn-primary" style="width:100%; margin-top:1.5rem;" onclick="saveCoachSettings()">Enregistrer</button></div></div>
 
     <!-- MODALS CLASSIQUES : Blocs, Builder, etc. -->
     <div id="modal-create-block" class="modal-overlay" style="z-index: 1010;"><div class="modal"><div class="modal-header"><h2 id="modal-block-title-text">Créer Bloc</h2><button class="close-btn" onclick="closeModal('modal-create-block')">&times;</button></div><div class="form-group"><label>Catégorie</label><select id="block-category" class="form-control" onchange="checkNewCategory(this)"></select></div><div class="form-group"><label>Titre de l'exercice</label><input type="text" id="block-title" class="form-control"></div><div class="form-group"><label>Description / Consignes</label><textarea id="block-desc" class="form-control"></textarea></div><button class="btn-primary" style="width:100%" onclick="saveBlock()">Enregistrer</button></div></div>
     <div id="modal-block-preview" class="modal-overlay" style="z-index: 1100;"><div class="modal block-preview-modal" role="dialog" aria-modal="true" aria-labelledby="block-preview-title"><div class="modal-header"><div><span id="block-preview-category" class="card-category"></span><h2 id="block-preview-title"></h2></div><button class="close-btn" aria-label="Fermer" onclick="closeModal('modal-block-preview'); viewedBlockId = null;">&times;</button></div><p id="block-preview-description" class="block-preview-description"></p><button class="btn-primary" style="width:100%;" onclick="addPreviewedBlockToBuilder()">Ajouter à la séance</button></div></div>
-    <div id="modal-new-category" class="modal-overlay" style="z-index: 1020;"><div class="modal" style="max-width: 400px;"><div class="modal-header"><h2>Nouvelle catégorie</h2><button class="close-btn" onclick="closeModal('modal-new-category')">&times;</button></div><input type="text" id="new-category-name" class="form-control" style="margin-bottom:1.5rem;"><button class="btn-primary" style="width: 100%" onclick="saveNewCategory()">Ajouter</button></div></div>
-    <div id="modal-create-session" class="modal-overlay"><div class="modal modal-builder"><div class="modal-header" style="margin-bottom: 0; padding: 1.5rem; background: var(--surface);"><h2 id="modal-session-title-text">Créer une Séance</h2><button class="close-btn" onclick="closeModal('modal-create-session')">&times;</button></div><div class="builder-container"><div class="builder-sidebar"><div class="flex-between"><h3>Ressources</h3><button class="btn-outline" onclick="openCreateBlock()">+ Bloc</button></div><div id="builder-filters" class="filter-tags" style="margin-top:1rem;"></div><div id="builder-blocks-list"></div></div><div class="builder-main"><h3>Structure (Glissez-déposez)</h3><div id="session-sequence" style="flex:1; overflow-y:auto; border: 2px dashed #CBD5E1; padding:1rem; margin-bottom:1.5rem; background:var(--bg-color); border-radius:var(--radius-md);"></div><div class="form-group"><input type="text" id="session-name" class="form-control" placeholder="Nom de la séance..."></div><button id="save-session-button" class="btn-primary" style="width:100%; padding: 1.1rem;" onclick="saveSession()">Enregistrer la séance</button></div></div></div></div>
+    <div id="modal-new-category" class="modal-overlay" style="z-index: 1020;"><div class="modal" style="max-width: 400px;"><div class="modal-header"><h2>Nouvelle catégorie</h2><button class="close-btn" onclick="closeModal('modal-new-category')">&times;</button></div>
+        <div class="form-group"><label for="new-category-name">Nom du thème</label><input type="text" id="new-category-name" class="form-control" maxlength="40" placeholder="Ex : Mobilité" oninput="selectNewCategoryColor(newCategoryColor)"></div>
+        <div class="form-group"><label>Couleur</label>
+            <div class="color-picker">
+                <div id="new-category-swatches" class="color-swatches"></div>
+                <label class="color-custom" title="Autre couleur"><input type="color" id="new-category-color-custom" value="#ef4444" oninput="selectNewCategoryColor(this.value)" aria-label="Choisir une autre couleur"><span>Autre</span></label>
+            </div>
+            <div class="color-preview-row"><span class="settings-hint">Aperçu :</span> <span id="new-category-preview" class="card-category">Aperçu</span></div>
+        </div>
+        <button class="btn-primary" style="width: 100%" onclick="saveNewCategory()">Ajouter</button></div></div>
+    <div id="modal-create-session" class="modal-overlay"><div class="modal modal-builder"><div class="modal-header" style="margin-bottom: 0; padding: 1.5rem; background: var(--surface);"><h2 id="modal-session-title-text">Créer une Séance</h2><button class="close-btn" onclick="closeModal('modal-create-session')">&times;</button></div><div class="builder-container"><div class="builder-sidebar"><div class="flex-between"><h3>Ressources</h3><button class="btn-outline" onclick="openCreateBlock()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Bloc</button></div><div id="builder-filters" class="filter-tags" style="margin-top:1rem;"></div><div id="builder-blocks-list"></div></div><div class="builder-main"><h3>Structure (Glissez-déposez)</h3><div id="session-sequence" style="flex:1; overflow-y:auto; border: 2px dashed var(--border-hover); padding:1rem; margin-bottom:1.5rem; background:var(--bg-color); border-radius:var(--radius-md);"></div><div class="form-group"><input type="text" id="session-name" class="form-control" placeholder="Nom de la séance..."></div><button id="save-session-button" class="btn-primary" style="width:100%; padding: 1.1rem;" onclick="saveSession()">Enregistrer la séance</button></div></div></div></div>
 
     <!-- MODAL : Attribuer avec Groupes -->
     <div id="modal-assign-session" class="modal-overlay"><div class="modal assignment-modal"><div class="modal-header"><h2>Attribuer une séance</h2><button class="close-btn" onclick="closeModal('modal-assign-session')">&times;</button></div><div id="assign-groups-container" class="assignment-groups"></div><div class="group-member-picker-heading assignment-picker-heading"><div><label for="assignment-member-search">Tous les membres (athlètes et coachs)</label><span id="assignment-member-count" class="group-member-count">0 sélectionné</span></div><input id="assignment-member-search" class="form-control group-member-search" type="search" placeholder="Rechercher un membre…" oninput="renderAssignmentMemberPicker()"></div><div class="assignment-select-actions"><button class="btn-outline" type="button" onclick="selectAllAthletes()">Tout sélectionner</button></div><div id="athlete-checklist" class="group-member-picker assignment-member-picker"></div><button class="btn-primary assignment-submit-button" onclick="saveAssignments()">Valider l'attribution</button></div></div>
@@ -458,24 +613,28 @@
                     <button id="btn-show-chrono" class="btn-outline chrono-toggle" type="button" style="display:none;" onclick="toggleChrono()" aria-expanded="false" aria-controls="chrono-container" aria-label="Afficher le chronomètre" title="Chronomètre"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M10 2.5h4M18.5 6.5l1.5-1.5"/></svg></button>
                     <button class="close-btn" onclick="closeModal('modal-view-session')">&times;</button>
                 </div>
-                <!-- Chronomètre compact, dans l'en-tête collant : reste visible pendant le défilement -->
-                <div id="chrono-container" class="timer-panel">
-                    <div class="timer-main">
-                        <div class="timer-readout">
-                            <span id="timer-phase" class="timer-phase">Prêt</span>
-                            <span id="timer-display" class="timer-display">00:00</span>
-                            <span id="timer-round" class="timer-round"></span>
+                <!-- Chronomètre dans l'en-tête collant : reste visible pendant le défilement -->
+                <div id="chrono-container" class="timer-panel" data-state="idle" data-phase="work">
+                    <!-- Configuration : visible uniquement tant que le chrono n'est pas lancé -->
+                    <div class="timer-setup">
+                        <div class="timer-inputs">
+                            <label>Travail <input type="number" id="timer-work" value="10" min="1" inputmode="numeric"> s</label>
+                            <label>Repos <input type="number" id="timer-rest" value="20" min="0" inputmode="numeric"> s</label>
+                            <label>Séries <input type="number" id="timer-rounds" value="5" min="1" inputmode="numeric"></label>
                         </div>
-                        <div class="timer-controls">
-                            <button type="button" class="timer-btn timer-btn-start" onclick="startTimer()">Start</button>
-                            <button type="button" class="timer-btn" onclick="pauseTimer()">Pause</button>
-                            <button type="button" class="timer-btn" onclick="resetTimer()">Reset</button>
-                        </div>
+                        <span id="timer-status" class="timer-status"></span>
+                        <button type="button" class="timer-btn timer-btn-start" onclick="startTimer()">Démarrer</button>
                     </div>
-                    <div class="timer-inputs">
-                        <label>Travail <input type="number" id="timer-work" value="10" min="1" inputmode="numeric"> s</label>
-                        <label>Repos <input type="number" id="timer-rest" value="20" min="0" inputmode="numeric"> s</label>
-                        <label>Séries <input type="number" id="timer-rounds" value="5" min="1" inputmode="numeric"></label>
+                    <!-- Chrono lancé : prend toute la place (pause, stop, plein écran) -->
+                    <div class="timer-run">
+                        <button type="button" id="timer-fullscreen-btn" class="timer-fullscreen-btn" onclick="toggleTimerFullscreen()" aria-label="Plein écran" title="Plein écran"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="icon-expand" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path class="icon-collapse" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
+                        <span id="timer-phase" class="timer-phase">Mise en place</span>
+                        <span id="timer-display" class="timer-display">00:05</span>
+                        <span id="timer-round" class="timer-round"></span>
+                        <div class="timer-controls">
+                            <button type="button" id="timer-pause-btn" class="timer-btn timer-btn-start" onclick="togglePauseTimer()">Pause</button>
+                            <button type="button" class="timer-btn" onclick="resetTimer()">Stop</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -488,7 +647,7 @@
                 <div class="session-review-divider" aria-hidden="true"><span>Fin de la séance</span></div>
                 <section id="session-review" class="session-review" aria-labelledby="session-review-title">
                     <div class="session-review-heading">
-                        <span class="session-review-step" aria-hidden="true">✓</span>
+                        <span class="session-review-step" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></span>
                         <div>
                             <h3 id="session-review-title">Bilan de la séance</h3>
                             <p>Comment s'est passée ta séance dans l'ensemble ?</p>
@@ -526,7 +685,7 @@
 
                     <label class="session-review-notes-label" for="session-annotation">Notes</label>
                     <textarea id="session-annotation" class="form-control session-review-notes" placeholder="Comment t'es-tu senti ?…"></textarea>
-                    <button id="btn-validate-session" class="btn-secondary session-review-submit">✓ Valider ma séance</button>
+                    <button id="btn-validate-session" class="btn-secondary session-review-submit">Valider ma séance</button>
                 </section>
             </div>
 
@@ -558,24 +717,150 @@
     </div>
     
     <!-- MODAL : VUE COACH SUR ATHLETE -->
-    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div><div id="view-athlete-role-control" class="profile-section" style="display:none;"><h3>Rôle dans le club</h3><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><select id="view-athlete-role" class="form-control" style="max-width:320px;"><option value="athlete">Athlète</option><option value="coach">Coach</option><option value="gerant">Gérant du club</option></select><button class="btn-primary" onclick="updateClubMemberRole()">Enregistrer le rôle</button></div></div></div><div id="coach-ath-view-historique" style="display:none;"><section class="coach-history-section"><h3>Séances en cours</h3><div id="coach-ath-current-sessions" class="grid"></div></section><section class="coach-history-section"><h3>Séances réalisées</h3><div id="coach-ath-history-list" class="grid"></div></section></div></div></div>
+    <div id="modal-view-athlete" class="modal-overlay"><div class="modal modal-large" style="background: var(--bg-color); padding:1rem;"><div class="modal-header" style="background: var(--surface); padding: 1.5rem; border-radius: var(--radius-md); border:none;"><h2 id="view-athlete-name" style="margin:0; color: var(--ffme-blue-dark);">Profil</h2><button class="close-btn" onclick="closeModal('modal-view-athlete')">&times;</button></div><div class="internal-tabs" style="margin-top:1rem; width:100%; display:flex;"><button class="active" id="btn-tab-ath-profil" onclick="switchAthleteViewTab('profil')" style="flex:1;">Profil & Objectifs</button><button id="btn-tab-ath-hist" onclick="switchAthleteViewTab('historique')" style="flex:1;">Historique Séances</button></div><div id="coach-ath-view-profil"><div class="profile-section"><h3>Calendrier</h3><div id="coach-view-calendar-container"></div></div><div class="profile-section"><h3>Objectifs</h3><p id="view-athlete-objectives" style="white-space: pre-wrap; font-weight:500; font-size:1.05rem; background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);"></p></div><div id="view-athlete-cycles-section" class="profile-section" style="display:none;"><div class="flex-between section-header"><h3>Cycles d'entraînement</h3><button class="btn-outline" onclick="openCycleModal(viewedAthleteId)"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nouveau cycle</button></div><div id="view-athlete-cycles" class="cycle-list"></div></div><div class="profile-section"><h3>Compétences</h3><div class="charts-container"><div class="chart-box"><canvas id="chart-t1-coach"></canvas></div><div class="chart-box"><canvas id="chart-t2-coach"></canvas></div></div></div><div class="profile-section"><h3>Compétitions</h3><div id="view-athlete-comps"></div></div><div id="view-athlete-role-control" class="profile-section" style="display:none;"><h3>Rôle dans le club</h3><div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;"><select id="view-athlete-role" class="form-control" style="max-width:320px;"><option value="athlete">Athlète</option><option value="initiateur">Initiateur</option><option value="coach">Coach</option><option value="entraineur">Entraîneur</option><option value="gerant">Gérant du club</option></select><button class="btn-primary" onclick="updateClubMemberRole()">Enregistrer le rôle</button></div></div></div><div id="coach-ath-view-historique" style="display:none;"><section class="coach-history-section"><h3>Séances en cours</h3><div id="coach-ath-current-sessions" class="grid"></div></section><section class="coach-history-section"><h3>Séances réalisées</h3><div id="coach-ath-history-list" class="grid"></div></section></div></div></div>
 
     <!-- Modals Skills & Calendar -->
     <div id="modal-skills" class="modal-overlay" style="z-index:1050;"><div class="modal modal-large"><div class="modal-header"><h2 style="font-size:1.5rem;">Auto-évaluation (0 à 10)</h2><button class="close-btn" onclick="closeModal('modal-skills')">&times;</button></div><div style="display: flex; gap: 2rem; flex-wrap:wrap;"><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-blue); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Technique & Gestuelle</h3><div id="skills-form-t1" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--danger); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Physique & Mental</h3><div id="skills-form-t2" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div></div><button class="btn-primary" style="width:100%; margin-top:2rem; padding:1.25rem; font-size:1.15rem;" onclick="saveSkills()">Enregistrer</button></div></div>
     <div id="modal-calendar-note" class="modal-overlay" style="z-index: 1050;"><div class="modal" style="max-width: 480px;"><div class="modal-header"><h3 id="cal-note-date" style="margin:0; font-size: 1.35rem; color:var(--ffme-blue-dark);">Date</h3><button class="close-btn" onclick="closeModal('modal-calendar-note')">&times;</button></div><div class="form-group"><label>Statut pour ce jour :</label><select id="cal-note-status" class="form-control"><option value="false">Repos</option><option value="true">Entraînement</option></select></div><div class="form-group"><label>Lier à une séance :</label><select id="cal-note-session" class="form-control" onchange="updateCalNoteSessionButton()"></select><button id="cal-note-open-session" type="button" class="btn-outline cal-note-open-session" style="display:none;" onclick="openCalendarLinkedSession()">Voir la séance liée</button></div><div class="form-group"><label>Note libre :</label><input type="text" id="cal-note-text" class="form-control"></div><button class="btn-primary" style="width:100%; margin-top:1rem; padding:1rem;" onclick="saveCalendarNote()">Valider</button></div></div>
 
+    <!-- ÉCOLE : création / modification d'un cours -->
+    <div id="modal-school-course" class="modal-overlay"><div class="modal school-course-modal">
+        <div class="modal-header"><h2 id="school-course-modal-title">Créer un cours</h2><button class="close-btn" onclick="closeModal('modal-school-course')">&times;</button></div>
+        <div class="form-group"><label for="course-name">Nom du cours</label><input id="course-name" class="form-control" type="text" maxlength="80" placeholder="Ex : Baby escalade 4-6 ans"></div>
+        <div class="school-form-grid">
+            <div class="form-group"><label for="course-start-date">Premier cours</label><input id="course-start-date" class="form-control" type="date" onchange="refreshCourseDatesPreview()"></div>
+            <div class="form-group"><label for="course-start-time">Début</label><input id="course-start-time" class="form-control" type="time"></div>
+            <div class="form-group"><label for="course-end-time">Fin</label><input id="course-end-time" class="form-control" type="time"></div>
+            <div class="form-group"><label for="course-session-count">Nombre de séances</label><input id="course-session-count" class="form-control" type="number" min="1" max="60" inputmode="numeric" onchange="refreshCourseDatesPreview()"></div>
+        </div>
+        <div class="form-group school-holiday-row">
+            <label class="settings-toggle"><input type="checkbox" id="course-skip-holidays" onchange="refreshCourseDatesPreview()"><span>Sauter les vacances scolaires</span></label>
+            <select id="course-holiday-zone" class="form-control" onchange="refreshCourseDatesPreview()" aria-label="Zone de vacances"><option value="A">Zone A</option><option value="B">Zone B</option><option value="C">Zone C</option></select>
+        </div>
+        <p id="course-holiday-status" class="settings-hint" aria-live="polite"></p>
+        <div class="form-group"><label>Dates du cours</label>
+            <div id="course-dates-preview"></div>
+            <div class="school-add-row"><input id="course-extra-date" class="form-control" type="date" aria-label="Date à ajouter"><button type="button" class="btn-outline" onclick="addCourseExtraDate()">Ajouter une date</button></div>
+        </div>
+        <div class="form-group"><label>Encadrants du cours</label><div id="course-staff-list" class="school-staff-list"></div></div>
+        <div id="course-students-section" class="form-group course-students-editor">
+            <label>Élèves <span id="course-students-count" class="school-muted"></span></label>
+            <div id="course-students-list" class="school-student-list"></div>
+            <div class="school-add-student">
+                <div class="school-add-row school-add-member-row">
+                    <select id="course-add-member" class="form-control" aria-label="Ajouter un membre du club" onchange="addEditorMemberStudent()"></select>
+                </div>
+                <div class="school-add-row">
+                    <input id="course-add-guest-name" class="form-control" type="text" maxlength="80" placeholder="Nom de l'élève (sans compte)" onkeydown="if(event.key==='Enter') addEditorGuestStudent()">
+                    <input id="course-add-guest-contact" class="form-control" type="text" maxlength="120" placeholder="Contact parent (facultatif)" onkeydown="if(event.key==='Enter') addEditorGuestStudent()">
+                    <button type="button" class="btn-outline" onclick="addEditorGuestStudent()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Ajouter</button>
+                </div>
+            </div>
+        </div>
+        <button id="course-save-button" class="btn-primary" style="width:100%;" onclick="saveCourse()">Enregistrer le cours</button>
+    </div></div>
+
+    <!-- ÉCOLE : appel d'une date -->
+    <div id="modal-school-attendance" class="modal-overlay"><div class="modal" style="max-width:520px;">
+        <div class="modal-header"><div><h2 id="attendance-title">Appel</h2><p id="attendance-subtitle" class="settings-hint" style="margin:0;"></p></div><button class="close-btn" onclick="closeModal('modal-school-attendance')">&times;</button></div>
+        <div class="attendance-toolbar"><span id="attendance-count" class="attendance-count"></span><button type="button" class="btn-outline" onclick="markAllPresent()">Tous présents</button></div>
+        <div id="attendance-list" class="attendance-list"></div>
+        <button id="attendance-save-button" class="btn-primary" style="width:100%; margin-top:1rem;" onclick="saveAttendance()">Enregistrer l'appel</button>
+    </div></div>
+
+    <!-- ÉCOLE : attribuer une séance de la bibliothèque à un cours -->
+    <div id="modal-school-assign" class="modal-overlay"><div class="modal" style="max-width:480px;">
+        <div class="modal-header"><h2>Attribuer à un cours</h2><button class="close-btn" onclick="closeModal('modal-school-assign')">&times;</button></div>
+        <p class="settings-hint">Séance : <strong id="school-assign-session-name"></strong></p>
+        <div class="form-group"><label for="school-assign-course">Cours</label><select id="school-assign-course" class="form-control" onchange="renderSchoolAssignDates()"></select></div>
+        <div class="form-group"><label>Dates</label><div id="school-assign-dates" class="school-assign-dates"></div></div>
+        <button id="school-assign-save" class="btn-primary" style="width:100%;" onclick="saveSchoolAssignment()">Attribuer</button>
+    </div></div>
+
+    <!-- ÉCOLE : séance prévue pour une date -->
+    <div id="modal-school-session" class="modal-overlay"><div class="modal" style="max-width:560px;">
+        <div class="modal-header"><div><h2 id="school-session-title">Séance</h2><p id="school-session-meta" class="settings-hint" style="margin:0;"></p></div><button class="close-btn" onclick="closeModal('modal-school-session')">&times;</button></div>
+        <div id="school-session-blocks"></div>
+        <button id="school-session-remove" type="button" class="btn-outline" style="color:var(--danger); margin-top:0.5rem;">Retirer cette séance de la date</button>
+    </div></div>
+
+    <!-- PARAMÈTRES DU CLUB (aussi utilisé pour la création d'un club) -->
+    <div id="modal-club-settings" class="modal-overlay"><div class="modal club-settings-modal">
+        <div class="modal-header"><h2 id="club-settings-title">Paramètres du club</h2><button class="close-btn" onclick="closeModal('modal-club-settings')">&times;</button></div>
+        <div class="club-settings-identity">
+            <div id="club-settings-avatar" class="club-settings-avatar"></div>
+            <div class="club-settings-identity-fields">
+                <label for="club-settings-name" class="club-settings-label">Nom du club</label>
+                <input id="club-settings-name" class="form-control" type="text" maxlength="80" oninput="renderClubSettingsAvatar()">
+                <p id="club-settings-name-hint" class="settings-hint" hidden>Le nom du club ne peut pas être modifié.</p>
+                <div class="club-settings-photo-actions">
+                    <label class="btn-outline club-settings-photo-pick"><input type="file" accept="image/*" class="avatar-input" onchange="handleClubSettingsAvatar(event)"><span id="club-settings-avatar-pick">Ajouter une photo</span></label>
+                    <button id="club-settings-avatar-remove" type="button" class="btn-text" onclick="removeClubSettingsAvatar()" hidden>Retirer la photo</button>
+                    <span class="settings-hint">Facultatif</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="club-settings-city-input">Ville(s) du club</label>
+            <p class="settings-hint">Ajoutez une ville par salle si le club en a plusieurs.</p>
+            <div id="club-settings-cities" class="club-city-list"></div>
+            <div class="school-add-row">
+                <input id="club-settings-city-input" class="form-control" type="text" maxlength="60" placeholder="Ex : Lille" onkeydown="if(event.key==='Enter'){event.preventDefault(); addClubSettingsCity();}">
+                <button type="button" class="btn-outline" onclick="addClubSettingsCity()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Ajouter</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Activités du club</label>
+            <div class="club-activity-choices">
+                <label class="club-activity-option"><input type="checkbox" id="club-settings-training" onchange="renderClubSettingsModules()">
+                    <span class="club-activity-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9 11h6M9 15h4"/></svg></span>
+                    <span class="club-activity-text"><strong>Entraînement</strong><small>Séances et blocs, profils des membres, attributions, cycles d'entraînement</small></span></label>
+                <label class="club-activity-option"><input type="checkbox" id="club-settings-school" onchange="renderClubSettingsModules()">
+                    <span class="club-activity-icon" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><path d="M3 20l6.5-11 4 6.5 2.5-4L21 20z"/><path d="M8 4.5l1.5-1.5L11 4.5"/></svg></span>
+                    <span class="club-activity-text"><strong>École d'escalade</strong><small>Cours récurrents, élèves, appel, séances pour les initiateurs</small></span></label>
+            </div>
+            <p id="club-settings-modules-hint" class="settings-hint club-modules-hint"></p>
+        </div>
+        <button id="club-settings-save" class="btn-primary" style="width:100%;" onclick="saveClubSettings()">Enregistrer</button>
+    </div></div>
+
+    <!-- RÔLE D'UN MEMBRE (depuis la liste des membres du club) -->
+    <div id="modal-member-role" class="modal-overlay"><div class="modal" style="max-width:520px;">
+        <div class="modal-header"><div><h2 id="member-role-title">Membre</h2><p class="settings-hint" style="margin:0;">Rôle dans le club</p></div><button class="close-btn" onclick="closeModal('modal-member-role')">&times;</button></div>
+        <select id="member-role-select" class="form-control"><option value="athlete">Athlète</option><option value="initiateur">Initiateur</option><option value="coach">Coach</option><option value="entraineur">Entraîneur</option><option value="gerant">Gérant du club</option></select>
+        <button class="btn-primary" style="width:100%; margin-top:1rem;" onclick="saveMemberRole()">Enregistrer le rôle</button>
+    </div></div>
+
+    <!-- CYCLE D'ENTRAÎNEMENT -->
+    <div id="modal-cycle" class="modal-overlay"><div class="modal" style="max-width:460px;">
+        <div class="modal-header"><h2 id="cycle-modal-title">Nouveau cycle</h2><button class="close-btn" onclick="closeModal('modal-cycle')">&times;</button></div>
+        <div class="form-group"><label for="cycle-name">Nom du cycle</label><input id="cycle-name" class="form-control" type="text" maxlength="80" placeholder="Ex : Préparation compétition régionale"></div>
+        <div class="school-form-grid">
+            <div class="form-group"><label for="cycle-target">Séances à réaliser</label><input id="cycle-target" class="form-control" type="number" min="1" max="500" inputmode="numeric"></div>
+            <div class="form-group"><label for="cycle-start">Début</label><input id="cycle-start" class="form-control" type="date"></div>
+            <div class="form-group"><label for="cycle-end">Fin (facultatif)</label><input id="cycle-end" class="form-control" type="date"></div>
+        </div>
+        <div class="form-group"><label for="cycle-notes">Notes (facultatif)</label><textarea id="cycle-notes" class="form-control" maxlength="1000" rows="3" placeholder="Objectif, consignes…"></textarea></div>
+        <p class="settings-hint">Les séances terminées pendant la période du cycle sont comptées automatiquement.</p>
+        <button class="btn-primary" style="width:100%;" onclick="saveCycle()">Enregistrer le cycle</button>
+    </div></div>
+
     <div id="app-dialog-overlay" class="app-dialog-overlay" style="display:none;" onclick="handleAppDialogBackdrop(event)">
         <section class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
-            <div class="app-dialog-icon" id="app-dialog-icon" aria-hidden="true">ℹ</div>
+            <div class="app-dialog-icon" id="app-dialog-icon" aria-hidden="true"></div>
             <h2 id="app-dialog-title">Information</h2>
             <p id="app-dialog-message"></p>
+            <div id="app-dialog-note" class="app-dialog-note" hidden></div>
             <input id="app-dialog-input" class="form-control" type="text" maxlength="120" hidden onkeydown="if(event.key==='Enter') submitAppDialogPrompt()">
             <div id="app-dialog-actions" class="app-dialog-actions"></div>
         </section>
     </div>
 
-    <!-- Lien vers le fichier JavaScript -->
-    <script src="app.js"></script>
+    <!-- Liens vers les fichiers JavaScript (school.js ne fait que déclarer des fonctions : chargé en premier) -->
+    <script defer src="school.js?v=20"></script>
+    <script defer src="app.js?v=20"></script>
     <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

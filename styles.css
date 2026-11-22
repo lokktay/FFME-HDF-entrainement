@@ -2571,7 +2571,7 @@ textarea.form-control {
     min-height: 280px;
 }
 
-/* Chronomètre compact (2 lignes) dans l'en-tête collant de la séance */
+/* Chronomètre dans l'en-tête collant de la séance */
 .timer-panel {
     --timer-phase-color: #B91C1C;
     flex: 1 0 100%;
@@ -2590,22 +2590,47 @@ textarea.form-control {
     --timer-phase-color: #15803D;
 }
 
-.timer-main {
+/* Mise en place (5 s avant la première série) */
+.timer-panel[data-phase="prep"] {
+    --timer-phase-color: #EA580C;
+}
+
+/* Configuration visible seulement à l'arrêt ; chrono seul une fois lancé */
+.timer-run { display: none; }
+.timer-panel[data-state="running"] .timer-setup { display: none; }
+.timer-panel[data-state="running"] .timer-run { display: flex; }
+
+.timer-setup {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
 }
 
-.timer-readout {
-    display: flex;
-    align-items: baseline;
-    gap: 0.6rem;
-    min-width: 0;
+.timer-status {
+    font-size: 0.8rem;
+    font-weight: 800;
+    margin-left: auto;
+}
+.timer-status:empty { display: none; }
+
+.timer-run {
+    position: relative;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0;
+    text-align: center;
+}
+
+.timer-panel[data-paused="true"] .timer-display {
+    opacity: 0.55;
 }
 
 .timer-phase {
-    font-size: 0.72rem;
+    font-size: 0.8rem;
     font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -2613,7 +2638,7 @@ textarea.form-control {
 }
 
 .timer-display {
-    font-size: 1.9rem;
+    font-size: 3.2rem;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     line-height: 1;
@@ -2621,7 +2646,7 @@ textarea.form-control {
 }
 
 .timer-round {
-    font-size: 0.72rem;
+    font-size: 0.8rem;
     font-weight: 700;
     opacity: 0.85;
     white-space: nowrap;
@@ -2629,8 +2654,8 @@ textarea.form-control {
 
 .timer-controls {
     display: flex;
-    gap: 0.35rem;
-    flex: 0 0 auto;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
 }
 
 .timer-btn {
@@ -2646,10 +2671,102 @@ textarea.form-control {
     cursor: pointer;
 }
 
+.timer-run .timer-btn {
+    min-width: 96px;
+    min-height: 38px;
+    font-size: 0.9rem;
+}
+
 .timer-btn-start {
     background: white;
     border-color: white;
     color: var(--timer-phase-color);
+}
+
+.timer-fullscreen-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: white;
+    cursor: pointer;
+}
+
+.timer-fullscreen-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.timer-fullscreen-btn .icon-collapse { display: none; }
+.timer-panel.is-fullscreen .timer-fullscreen-btn .icon-expand { display: none; }
+.timer-panel.is-fullscreen .timer-fullscreen-btn .icon-collapse { display: inline; }
+
+/* Plein écran : API native (:fullscreen) ou superposition fixe (iPhone) */
+.timer-panel.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    margin: 0;
+    border-radius: 0;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+}
+
+.timer-panel.is-fullscreen .timer-run {
+    position: static;
+    width: 100%;
+    height: 100%;
+    gap: 1.5vmin;
+}
+
+.timer-panel.is-fullscreen .timer-fullscreen-btn {
+    top: max(1rem, env(safe-area-inset-top));
+    right: 1rem;
+    width: 44px;
+    height: 44px;
+}
+
+.timer-panel.is-fullscreen .timer-phase {
+    font-size: clamp(1.2rem, 5vmin, 2.5rem);
+}
+
+.timer-panel.is-fullscreen .timer-display {
+    font-size: clamp(4rem, 32vmin, 22rem);
+}
+
+.timer-panel.is-fullscreen .timer-round {
+    display: block;
+    font-size: clamp(1rem, 4vmin, 2rem);
+}
+
+.timer-panel.is-fullscreen .timer-controls {
+    gap: 1rem;
+    margin-top: 3vmin;
+}
+
+.timer-panel.is-fullscreen .timer-btn {
+    min-width: 140px;
+    min-height: 56px;
+    font-size: 1.2rem;
+}
+
+body.timer-fullscreen-open {
+    overflow: hidden;
 }
 
 .timer-inputs {
@@ -2657,7 +2774,6 @@ textarea.form-control {
     justify-content: flex-start;
     flex-wrap: wrap;
     gap: 0.4rem 0.9rem;
-    margin-top: 0.4rem;
 }
 
 .timer-inputs label {
@@ -3366,10 +3482,7 @@ body.session-view-open .chat-btn-float {
         bottom: 16px;
     }
     .timer-display {
-        font-size: 1.6rem;
-    }
-    .timer-round {
-        display: none;
+        font-size: 2.8rem;
     }
     .assignment-picker-heading {
         align-items: stretch;
@@ -4236,4 +4349,2047 @@ body.session-view-open .chat-btn-float {
 
 .push-entry + .install-app-entry {
     margin-top: 0.75rem;
+}
+
+/* ==========================================================================
+   PARAMÈTRES : bouton engrenage, page Paramètres, mode sombre
+   ========================================================================== */
+
+/* --- Bouton engrenage (à côté de la déconnexion) --- */
+#nav-settings {
+    margin-left: auto;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+#nav-settings .nav-label {
+    display: none;
+}
+#nav-settings .nav-icon {
+    display: inline-flex;
+    line-height: 0;
+}
+#nav-settings .nav-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+#nav-settings:hover,
+#nav-settings.active {
+    background: var(--primary-subtle);
+    border-color: var(--primary-border);
+    color: var(--primary);
+    box-shadow: none;
+}
+
+@media (max-width: 640px) {
+    /* Même gabarit que la déconnexion, juste à sa gauche, en haut de l'écran */
+    #nav-settings {
+        position: fixed;
+        top: calc(0.45rem + var(--safe-top));
+        right: calc(0.75rem + 42px + 0.5rem);
+        z-index: 101;
+        flex: none;
+        width: 42px;
+        min-width: 42px;
+        height: 42px;
+        min-height: 42px;
+        margin: 0;
+        background: var(--surface);
+    }
+    #nav-settings .nav-icon {
+        width: auto;
+        margin: 0;
+        padding: 0;
+        background: none !important;
+        box-shadow: none !important;
+    }
+    #nav-settings .nav-label-short {
+        display: none;
+    }
+    nav #nav-settings.active {
+        background: var(--primary-subtle);
+        color: var(--primary);
+    }
+    /* Le titre ne passe pas sous les deux boutons ronds (paramètres + déconnexion) */
+    header {
+        padding-right: calc(0.75rem + 42px * 2 + 1rem);
+    }
+}
+
+/* --- Page Paramètres --- */
+#settings-space {
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.settings-section h3 {
+    margin-bottom: 0.35rem;
+}
+.settings-hint {
+    margin: 0 0 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+#settings-family-section > * + * {
+    margin-top: 0.75rem;
+}
+.settings-linked-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+.settings-linked-list:empty {
+    display: none;
+}
+.settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.settings-toggle input {
+    width: 1.2rem;
+    height: 1.2rem;
+    flex: none;
+    accent-color: var(--primary);
+}
+#coach-settings-status {
+    display: block;
+    margin: 0.5rem 0 0;
+}
+
+/* Sélecteur de thème : deux boutons segmentés */
+.theme-switch {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    max-width: 320px;
+}
+.theme-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.75rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-body);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+.theme-option svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.theme-option:hover {
+    border-color: var(--primary-border);
+}
+.theme-option.active {
+    border-color: var(--primary);
+    background: var(--primary-subtle);
+    color: var(--primary);
+    box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+/* --- Mode sombre : on redéfinit les variables du thème --- */
+html[data-theme="dark"] {
+    color-scheme: dark;
+
+    --primary: #3B8BEB;
+    --primary-light: #60A5FA;
+    --primary-dark: #93C5FD;
+    --primary-darker: #BFDBFE;
+    --primary-subtle: rgba(59, 139, 235, 0.14);
+    --primary-border: rgba(96, 165, 250, 0.38);
+    --primary-ring: rgba(96, 165, 250, 0.28);
+
+    --accent: #38BDF8;
+    --accent-light: #7DD3FC;
+    --accent-dark: #BAE6FD;
+    --accent-subtle: rgba(56, 189, 248, 0.12);
+    --accent-border: rgba(56, 189, 248, 0.35);
+
+    --ffme-blue: #4C9AFF;
+    --ffme-blue-light: #60A5FA;
+    --ffme-blue-dark: #93C5FD;
+
+    --success-subtle: rgba(16, 185, 129, 0.14);
+    --success-border: rgba(16, 185, 129, 0.4);
+    --warning-subtle: rgba(245, 158, 11, 0.14);
+    --warning-border: rgba(245, 158, 11, 0.4);
+    --danger: #F87171;
+    --danger-subtle: rgba(239, 68, 68, 0.14);
+    --danger-border: rgba(248, 113, 113, 0.4);
+
+    --gradient-surface: #111A2B;
+
+    --bg-color: #0B1220;
+    --surface: #111A2B;
+    --surface-subtle: #1A2436;
+    --text-dark: #F1F5F9;
+    --text-body: #CBD5E1;
+    --text-muted: #94A3B8;
+    --text-light: #64748B;
+    --border-color: #243047;
+    --border-hover: #334155;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 25px -4px rgba(0, 0, 0, 0.5), 0 6px 12px -3px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 30px -6px rgba(0, 0, 0, 0.55), 0 8px 12px -4px rgba(0, 0, 0, 0.35);
+    --shadow-blue: 0 4px 14px rgba(0, 0, 0, 0.45);
+    --shadow-blue-hover: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+html[data-theme="dark"] body {
+    background-color: var(--bg-color);
+    color: var(--text-body);
+}
+html[data-theme="dark"] header {
+    background-color: rgba(17, 26, 43, 0.95);
+}
+html[data-theme="dark"] .auth-container {
+    border-color: var(--border-color);
+}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: #334155;
+}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+    color: var(--text-dark);
+}
+html[data-theme="dark"] .form-control {
+    background-color: var(--surface-subtle);
+    border-color: var(--border-color);
+    color: var(--text-dark);
+}
+html[data-theme="dark"] .modal-overlay {
+    background: rgba(2, 6, 15, 0.75);
+}
+html[data-theme="dark"] img {
+    color-scheme: light;
+}
+/* Fonds clairs codés en dur, adaptés au mode sombre */
+html[data-theme="dark"] .user-info:hover,
+html[data-theme="dark"] .global-library-block-cat {
+    background: var(--primary-subtle);
+}
+html[data-theme="dark"] .calendar-day.active-day {
+    background-color: var(--danger-subtle);
+}
+html[data-theme="dark"] .calendar-day.active-day:hover {
+    background-color: rgba(239, 68, 68, 0.22);
+}
+html[data-theme="dark"] .club-management-panel,
+html[data-theme="dark"] .club-select,
+html[data-theme="dark"] .club-create-controls,
+html[data-theme="dark"] .club-picker-toggle {
+    background: var(--surface-subtle);
+}
+
+/* --- Case « voir le mot de passe » : case carrée + texte gris en italique --- */
+.show-password {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.form-group label.show-password {
+    display: inline-flex;
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+.form-group .password-options label.show-password {
+    margin: 0;
+}
+.show-password input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1.5px solid var(--border-hover);
+    border-radius: 4px;
+    background: var(--surface);
+    display: inline-grid;
+    place-content: center;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.show-password input[type="checkbox"]::after {
+    content: '';
+    width: 4px;
+    height: 8px;
+    margin-top: -2px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0);
+    transition: transform 0.12s ease;
+}
+.show-password input[type="checkbox"]:checked {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+.show-password input[type="checkbox"]:checked::after {
+    transform: rotate(45deg) scale(1);
+}
+.show-password input[type="checkbox"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-ring);
+}
+.show-password:hover input[type="checkbox"] {
+    border-color: var(--primary);
+}
+
+/* Connexion : « voir le mot de passe » à gauche, « Mot de passe oublié ? » à droite */
+.password-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin-top: 0.5rem;
+}
+.password-options .show-password {
+    margin: 0;
+}
+.password-options .forgot-password-link {
+    margin: 0;
+    padding: 0;
+    font-size: 0.8rem;
+}
+
+/* --- Fenêtre pop-up : encart mis en avant (rappel spams) --- */
+.app-dialog-icon svg {
+    width: 1.5rem;
+    height: 1.5rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.app-dialog-note {
+    margin: -0.5rem 0 1.5rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--warning-border);
+    background: var(--warning-subtle);
+    color: var(--text-body);
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.45;
+    text-align: left;
+}
+/* --- Paramètres > Mon compte --- */
+.settings-account-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+}
+.settings-subsection {
+    display: flex;
+    flex-direction: column;
+    padding: 1.1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface-subtle);
+}
+.settings-subsection .form-group {
+    margin-bottom: 0.9rem;
+}
+.settings-subsection .btn-primary {
+    margin-top: auto;
+    width: 100%;
+}
+.settings-subsection h4 {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+    color: var(--text-dark);
+}
+/* ==========================================================================
+   REFONTE GRAPHIQUE : icônes au trait (remplacent les émojis),
+   mise en page recentrée et plus compacte
+   ========================================================================== */
+
+:root {
+    --content-max: 1120px;
+    --content-pad: 1.25rem;
+}
+
+/* --- Icônes au trait (même style que les onglets) --- */
+.ui-icon {
+    width: 1.1em;
+    height: 1.1em;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: -0.18em;
+}
+.btn-primary .ui-icon,
+.btn-outline .ui-icon,
+.btn-secondary .ui-icon {
+    width: 16px;
+    height: 16px;
+}
+.btn-icon .ui-icon {
+    width: 18px;
+    height: 18px;
+}
+.btn-icon {
+    font-size: 1rem;
+}
+.btn-icon:hover {
+    background: var(--surface-subtle);
+    color: var(--primary);
+}
+.btn-icon[style*="danger"]:hover {
+    background: var(--danger-subtle);
+    color: var(--danger);
+}
+
+/* Avatars sans photo : silhouette centrée */
+.group-member-avatar-placeholder,
+.existing-group-avatar-placeholder,
+.athlete-club-member-placeholder,
+.coach-group-icon,
+#profile-avatar-placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-light);
+}
+.group-member-avatar-placeholder .ui-icon,
+.existing-group-avatar-placeholder .ui-icon,
+.athlete-club-member-placeholder .ui-icon,
+.coach-group-icon .ui-icon {
+    width: 55%;
+    height: 55%;
+}
+#profile-avatar-placeholder .ui-icon {
+    display: block;
+    width: 2.6rem;
+    height: 2.6rem;
+    margin: 0 auto;
+}
+#header-user-info-text .ui-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 0.3rem;
+    vertical-align: -0.2em;
+    opacity: 0.75;
+}
+
+.chat-btn-float .ui-icon {
+    width: 26px;
+    height: 26px;
+}
+.chat-header-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.chat-header-btn .ui-icon {
+    width: 18px;
+    height: 18px;
+}
+.session-access-lock .ui-icon {
+    width: 15px;
+    height: 15px;
+}
+.status-badge .ui-icon {
+    width: 0.95em;
+    height: 0.95em;
+    margin-right: 0.15rem;
+}
+.club-picker-caret .ui-icon {
+    width: 14px;
+    height: 14px;
+}
+.club-panel-icon .ui-icon,
+.club-picker-avatar-new .ui-icon {
+    width: 60%;
+    height: 60%;
+}
+.session-review-step .ui-icon {
+    width: 70%;
+    height: 70%;
+    stroke-width: 2.4;
+}
+.group-member-checkmark .ui-icon {
+    width: 70%;
+    height: 70%;
+    stroke-width: 2.6;
+}
+.app-dialog-icon .ui-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+.account-dropdown button .ui-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 0.4rem;
+}
+.builder-sequence-controls .ui-icon,
+.builder-sequence-item button .ui-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* --- Titres et séparateurs --- */
+.page-title {
+    margin-bottom: 1rem;
+}
+.section-title-sm {
+    font-size: 1.05rem;
+}
+.section-divider {
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+}
+.section-header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.section-header h3 {
+    margin: 0;
+    border: none;
+    padding: 0;
+}
+.back-button {
+    margin-bottom: 1rem;
+}
+.section-description {
+    margin: -0.5rem 0 1rem;
+    font-size: 0.9rem;
+}
+
+/* --- Tablette et ordinateur : contenu recentré, éléments plus compacts --- */
+@media (min-width: 641px) {
+    /* L'en-tête s'aligne sur la même colonne centrale que le contenu */
+    header {
+        padding: 0.55rem max(var(--content-pad), calc((100% - var(--content-max)) / 2 + var(--content-pad)));
+        gap: 0.75rem;
+    }
+    header h1 {
+        font-size: 1.2rem;
+    }
+    nav {
+        gap: 0.25rem;
+    }
+    nav button {
+        padding: 0.45rem 0.8rem;
+        font-size: 0.86rem;
+    }
+    #btn-logout {
+        padding: 0.45rem 0.85rem;
+    }
+
+    .tab-content {
+        max-width: var(--content-max);
+        padding: 1.5rem var(--content-pad) 2.5rem;
+    }
+    .section-title {
+        font-size: 1.25rem;
+    }
+    .section-title-sm {
+        font-size: 1.05rem;
+    }
+    .flex-between {
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    hr {
+        margin: 1.25rem 0;
+    }
+    .internal-tabs {
+        margin-bottom: 0;
+    }
+    .search-bar {
+        max-width: 280px;
+    }
+
+    /* Grilles de cartes : plus de colonnes, moins d'écart */
+    .grid {
+        grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+        gap: 1rem;
+    }
+    #coach-sessions-grid {
+        margin-bottom: 0.5rem;
+    }
+    .card {
+        padding: 1rem 1.1rem;
+        border-radius: var(--radius-md);
+    }
+    .card-title {
+        font-size: 1.02rem;
+    }
+    .card .card-header {
+        margin-bottom: 0.5rem;
+    }
+
+    /* Boutons et champs un peu plus fins */
+    .btn-primary {
+        padding: 0.55rem 1.1rem;
+        font-size: 0.88rem;
+    }
+    .btn-outline {
+        padding: 0.5rem 0.95rem;
+        font-size: 0.86rem;
+    }
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    .form-control {
+        padding: 0.6rem 0.8rem;
+    }
+
+    /* Profil et paramètres : colonne centrale lisible */
+    #athlete-profile-space,
+    #settings-space {
+        max-width: 880px;
+    }
+    .profile-header {
+        padding: 1.1rem 1.25rem;
+        gap: 1.1rem;
+        margin-bottom: 1rem;
+    }
+    .profile-section {
+        padding: 1.2rem 1.3rem;
+        margin-bottom: 1rem;
+        border-radius: var(--radius-md);
+    }
+    .profile-section h3 {
+        font-size: 1.05rem;
+        margin-bottom: 0.75rem;
+    }
+    .charts-container {
+        gap: 1rem;
+    }
+    .chart-box {
+        max-width: 400px;
+        min-height: 240px;
+        padding: 0.9rem;
+    }
+
+    /* Fenêtres */
+    .modal {
+        padding: 1.5rem;
+    }
+    .modal-header {
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+    }
+    .notifications-panel {
+        padding: 1rem 1.25rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .chat-btn-float {
+        width: 52px;
+        height: 52px;
+    }
+}
+
+/* Grand écran : on garde la colonne centrale, sans étirer les cartes */
+@media (min-width: 1400px) {
+    :root {
+        --content-max: 1200px;
+    }
+}
+
+/* ==========================================================================
+   SÉANCES : boutons côte à côte, bandeau avec photo, couleurs par thème
+   ========================================================================== */
+
+/* --- Carte de séance : Partager + Attribuer sur une seule ligne --- */
+.session-card-meta {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.session-card-assigned {
+    margin-bottom: 0.75rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius-sm);
+    background: var(--primary-subtle);
+    color: var(--ffme-blue-dark);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+.session-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: auto;
+}
+.session-card-actions > button {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+}
+
+/* --- Bandeau supérieur : photo de profil à la place de la silhouette --- */
+.header-user-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+}
+.user-info {
+    padding: 0.25rem 0.85rem 0.25rem 0.3rem;
+}
+.header-avatar {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--primary-border);
+    background: var(--surface);
+}
+.header-avatar-placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+}
+#header-user-info-text .header-avatar-placeholder .ui-icon {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    opacity: 1;
+}
+.header-user-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.header-user-role {
+    opacity: 0.7;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.header-child-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--primary);
+    color: white;
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* --- Couleur du thème : pastille + liseré latéral --- */
+[style*="--cat-color"] .card-category,
+.card-category[style*="--cat-color"],
+[style*="--cat-color"] .builder-block-category {
+    color: var(--cat-color);
+    background: var(--surface-subtle);
+    background: color-mix(in srgb, var(--cat-color) 13%, transparent);
+    border: 1px solid var(--cat-color);
+    border-color: color-mix(in srgb, var(--cat-color) 40%, transparent);
+}
+.athlete-block-card[style*="--cat-color"],
+.club-session-detail-block[style*="--cat-color"],
+.draggable-item[style*="--cat-color"],
+.builder-block-card[style*="--cat-color"],
+.block-card[style*="--cat-color"],
+.session-view-block {
+    border-left: 4px solid var(--cat-color, var(--primary)) !important;
+}
+.session-view-block {
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+/* --- Choix de la couleur d'un nouveau thème --- */
+.color-picker {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+.color-swatches {
+    display: grid;
+    grid-template-columns: repeat(6, 30px);
+    gap: 0.45rem;
+}
+.color-swatch {
+    width: 30px;
+    height: 30px;
+    min-height: 0;
+    padding: 0;
+    border: 2px solid var(--surface);
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px var(--border-color);
+    cursor: pointer;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.color-swatch:hover {
+    transform: scale(1.08);
+}
+.color-swatch.active {
+    box-shadow: 0 0 0 2px var(--text-dark);
+}
+.form-group label.color-custom,
+.color-custom {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.color-custom input[type="color"] {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+}
+.color-custom input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+.color-custom input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
+.color-custom input[type="color"]::-moz-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
+.color-preview-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+.color-preview-row .settings-hint {
+    margin: 0;
+}
+
+/* --- Onglet Séances : recherche + tri, et bouton « Afficher plus » --- */
+.session-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.session-sort select.form-control {
+    width: auto;
+    min-width: 160px;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-radius: var(--radius-full);
+    font-size: 0.86rem;
+    cursor: pointer;
+}
+.show-more-row {
+    display: flex;
+    justify-content: center;
+    margin: 1rem 0 0.5rem;
+}
+.show-more-row:empty {
+    display: none;
+}
+.show-more-button {
+    border-radius: var(--radius-full);
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+}
+@media (max-width: 640px) {
+    .session-toolbar {
+        width: 100%;
+    }
+    .session-toolbar .search-bar {
+        flex: 1 1 180px;
+        width: auto;
+    }
+    .session-sort {
+        flex: 0 0 auto;
+    }
+    .session-sort select.form-control {
+        min-width: 0;
+    }
+    .show-more-button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ==========================================================================
+   ÉCOLE D'ESCALADE & CYCLES D'ENTRAÎNEMENT
+   ========================================================================== */
+.empty-state-card {
+    grid-column: 1 / -1;
+    padding: 2rem 1rem;
+    border: 1px dashed var(--border-hover);
+    border-radius: var(--radius-md);
+    text-align: center;
+    color: var(--text-muted);
+}
+.school-muted {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* --- Cartes de cours --- */
+.school-course-card {
+    cursor: pointer;
+}
+.school-course-count {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+.school-course-line {
+    margin: 0.2rem 0 0;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+.school-course-line .ui-icon {
+    width: 14px;
+    height: 14px;
+    margin-right: 0.2rem;
+}
+.school-course-progress,
+.cycle-progress {
+    height: 6px;
+    margin: 0.5rem 0 0.25rem;
+    border-radius: var(--radius-full);
+    background: var(--surface-subtle);
+    overflow: hidden;
+}
+.school-course-progress span,
+.cycle-progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary);
+    transition: width var(--transition-normal);
+}
+
+/* --- Détail d'un cours --- */
+.school-course-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+.school-course-header .section-title {
+    margin-bottom: 0.25rem;
+}
+.school-course-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.school-course-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 1rem;
+    align-items: start;
+}
+.school-date-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 560px;
+    overflow-y: auto;
+}
+.school-date-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+.school-date-past {
+    opacity: 0.7;
+}
+.school-date-today {
+    border-color: var(--primary);
+    box-shadow: inset 3px 0 0 var(--primary);
+}
+.school-date-main {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+}
+.school-date-index {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--surface-subtle);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+.school-date-main strong {
+    font-size: 0.9rem;
+}
+.school-date-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.school-session-link {
+    margin: 0;
+    font-size: 0.8rem;
+}
+.school-attendance-count {
+    font-weight: 700;
+    color: var(--success);
+}
+.school-today-badge {
+    margin-left: 0.4rem;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    background: var(--primary);
+    color: white;
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+.school-roll-button {
+    flex: none;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+}
+
+/* --- Élèves --- */
+.school-student-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.school-student-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: var(--radius-sm);
+}
+.school-student-row:hover {
+    background: var(--surface-subtle);
+}
+.school-student-avatar {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--primary-subtle);
+    color: var(--primary);
+}
+.school-student-avatar .ui-icon {
+    width: 16px;
+    height: 16px;
+}
+.school-student-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+}
+.school-student-info strong {
+    font-size: 0.88rem;
+}
+.school-student-info small {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+}
+.school-add-student {
+    margin-top: 1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border-color);
+}
+.school-add-student h4 {
+    margin: 0 0 0.6rem;
+    font-size: 0.88rem;
+}
+.school-add-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.school-add-row .form-control {
+    flex: 1 1 160px;
+    width: auto;
+}
+
+/* --- Fenêtre de création d'un cours --- */
+.school-course-modal {
+    max-width: 640px;
+}
+.school-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0 0.75rem;
+}
+.school-holiday-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+.school-holiday-row select {
+    width: auto;
+}
+.school-date-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.6rem;
+}
+.school-date-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius-full);
+    background: var(--primary-subtle);
+    color: var(--primary-dark);
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.school-date-chip .ui-icon {
+    width: 12px;
+    height: 12px;
+    opacity: 0.6;
+}
+.school-date-chip.extra {
+    border-style: dashed;
+}
+.school-date-chip.removed {
+    border-color: var(--border-color);
+    background: var(--surface-subtle);
+    color: var(--text-muted);
+    text-decoration: line-through;
+}
+.school-staff-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.4rem;
+}
+.school-staff-option,
+.school-assign-date {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600;
+}
+.form-group label.school-staff-option,
+.form-group label.school-assign-date {
+    display: flex;
+    margin-bottom: 0;
+    font-size: 0.85rem;
+}
+.school-staff-option small {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 0.72rem;
+}
+.school-staff-option input,
+.school-assign-date input {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--primary);
+}
+.school-assign-dates {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 320px;
+    overflow-y: auto;
+}
+.school-assign-date span {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+}
+.school-assign-date small {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* --- Appel --- */
+.attendance-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.attendance-count {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+.attendance-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-height: 55vh;
+    overflow-y: auto;
+}
+.attendance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+}
+.attendance-present {
+    border-left-color: var(--success);
+}
+.attendance-absent {
+    border-left-color: var(--danger);
+}
+.attendance-toggle {
+    display: inline-flex;
+    flex: none;
+    padding: 3px;
+    border-radius: var(--radius-full);
+    background: var(--surface-subtle);
+    gap: 3px;
+}
+.attendance-toggle button {
+    min-height: 32px;
+    padding: 0.25rem 0.75rem;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.attendance-present .attendance-toggle button.active {
+    background: var(--success);
+    color: white;
+}
+.attendance-absent .attendance-toggle button.active {
+    background: var(--danger);
+    color: white;
+}
+
+/* --- Cycles --- */
+.cycle-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.75rem;
+}
+.cycle-card {
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+.cycle-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.cycle-name {
+    display: block;
+    font-size: 0.98rem;
+    color: var(--text-dark);
+}
+.cycle-status {
+    display: inline-block;
+    margin-top: 0.2rem;
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: var(--surface-subtle);
+    color: var(--text-muted);
+}
+.cycle-status-active {
+    background: var(--primary-subtle);
+    color: var(--primary);
+}
+.cycle-status-done {
+    background: var(--success-subtle);
+    color: var(--success);
+}
+.cycle-actions {
+    display: flex;
+    gap: 0.15rem;
+}
+.cycle-period,
+.cycle-count {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.cycle-count strong {
+    color: var(--text-dark);
+    font-size: 0.95rem;
+}
+.cycle-notes {
+    margin: 0.5rem 0 0;
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+}
+.cycle-history {
+    margin-top: 0.6rem;
+    font-size: 0.82rem;
+}
+.cycle-history summary {
+    cursor: pointer;
+    color: var(--primary);
+    font-weight: 600;
+}
+.cycle-history ul {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.cycle-history li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+.cycle-history li span {
+    flex: none;
+    width: 3.5rem;
+    color: var(--text-muted);
+}
+.cycle-history li small {
+    margin-left: auto;
+    color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
+    .school-course-layout {
+        grid-template-columns: 1fr;
+    }
+}
+@media (max-width: 640px) {
+    .school-date-row {
+        flex-wrap: wrap;
+    }
+    .school-roll-button {
+        width: 100%;
+        justify-content: center;
+    }
+    .school-date-list {
+        max-height: none;
+    }
+    .school-course-actions {
+        width: 100%;
+    }
+    .school-course-actions .btn-primary {
+        flex: 1;
+    }
+}
+
+/* --- École : vue élève (ses cours, dates et présences) --- */
+.school-section-title {
+    margin: 0 0 0.75rem;
+}
+#school-staff-section + #school-student-section {
+    margin-top: 1.75rem;
+}
+.school-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+.school-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.school-legend-item::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--school-status-color);
+}
+.school-student-courses {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+}
+.school-student-card {
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+}
+.school-student-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.school-student-stats {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.1;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.school-student-stats strong {
+    font-size: 1.3rem;
+    color: var(--text-dark);
+}
+.school-student-stats small {
+    font-size: 0.7rem;
+}
+.school-student-dates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.75rem;
+}
+.school-student-date {
+    padding: 0.2rem 0.5rem;
+    border: 1px solid var(--school-status-color);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: var(--school-status-color);
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+/* Couleurs des statuts (présent / absent / à venir / appel non fait) */
+.school-legend-item.present,
+.school-student-date.present { --school-status-color: #16A34A; }
+.school-legend-item.absent,
+.school-student-date.absent { --school-status-color: #DC2626; }
+.school-legend-item.upcoming,
+.school-student-date.upcoming { --school-status-color: var(--primary); }
+.school-legend-item.unmarked,
+.school-student-date.unmarked { --school-status-color: var(--text-light); }
+.school-student-date.present,
+.school-student-date.absent {
+    background: var(--school-status-color);
+    color: white;
+}
+.school-student-date.upcoming {
+    border-style: dashed;
+}
+.school-student-date.today {
+    box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary);
+}
+
+/* --- École : prochaine date seule + bouton « Voir toutes les dates », élèves dans la fenêtre du cours --- */
+.school-dates-toggle {
+    margin-top: 0.75rem;
+    width: 100%;
+    justify-content: center;
+}
+.school-dates-link {
+    display: inline-block;
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+}
+.school-students-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+.school-students-heading h3 {
+    margin: 0;
+}
+.course-students-editor .school-student-list {
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 0.25rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+.course-students-editor .school-add-student {
+    margin-top: 0.6rem;
+    padding-top: 0;
+    border-top: none;
+}
+
+/* ==========================================================================
+   SÉLECTEURS MAISON : panneau qui s'ouvre, boutons segmentés, cartes de choix
+   ========================================================================== */
+
+/* --- Panneau qui s'ouvre sous le bouton (pousse le contenu : jamais coupé dans une fenêtre) --- */
+.ui-picker .club-picker-toggle {
+    min-height: 2.75rem;
+    background: var(--surface);
+    border-color: var(--border-color);
+    font-weight: 600;
+}
+.ui-picker .club-picker-toggle:hover,
+.ui-picker .club-picker-toggle[aria-expanded="true"] {
+    border-color: var(--primary);
+}
+.ui-picker .club-picker-toggle[aria-expanded="true"] {
+    border-bottom-left-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+}
+.ui-picker .club-picker-toggle:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.ui-picker .club-picker-list {
+    position: static;
+    margin-top: 6px;
+    max-height: 300px;
+    box-shadow: var(--shadow-md);
+}
+.ui-picker .club-picker-option {
+    min-height: 2.6rem;
+    font-size: 0.9rem;
+}
+.ui-picker .club-picker-option[hidden],
+.ui-picker .club-picker-empty[hidden] {
+    display: none;
+}
+.ui-picker .club-picker-avatar {
+    width: 1.8rem;
+    height: 1.8rem;
+    font-size: 0.8rem;
+}
+.ui-picker-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+}
+.ui-picker-text small {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+.ui-picker-check {
+    flex: none;
+    color: var(--primary);
+}
+.ui-picker-check .ui-icon {
+    width: 16px;
+    height: 16px;
+}
+.ui-picker-lead {
+    flex: none;
+    width: 1.8rem;
+    height: 1.8rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--primary-subtle);
+    color: var(--primary);
+}
+.ui-picker-lead .ui-icon {
+    width: 15px;
+    height: 15px;
+}
+.ui-picker-dot {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin: 0 0.3rem;
+    border-radius: 50%;
+    background: var(--cat-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--cat-color) 20%, transparent);
+}
+.ui-picker-search {
+    position: sticky;
+    top: -0.35rem;
+    z-index: 1;
+    margin: -0.35rem -0.35rem 0.35rem;
+    padding: 0.4rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-color);
+}
+.ui-picker-search .form-control {
+    min-height: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.88rem;
+}
+.school-add-member-row .ui-picker {
+    flex: 1 1 100%;
+}
+
+/* --- Boutons segmentés (tri, zone de vacances, statut du jour) --- */
+.choice-group.choice-pills {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    background: var(--surface-subtle);
+}
+.choice-pills .choice-option {
+    min-height: 32px;
+    padding: 0.3rem 0.9rem;
+    border: none;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+.choice-pills .choice-option:hover {
+    color: var(--primary);
+}
+.choice-pills .choice-option.selected {
+    background: var(--surface);
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+.choice-group.is-disabled {
+    opacity: 0.5;
+}
+.choice-group .choice-option:disabled {
+    cursor: not-allowed;
+}
+
+/* --- Cartes de choix (rôles, cours) --- */
+.choice-group.choice-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 0.5rem;
+    width: 100%;
+}
+.choice-cards .choice-option {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    padding: 0.65rem 0.8rem 0.65rem 2.2rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-dark);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+.choice-cards .choice-option::before {
+    content: '';
+    position: absolute;
+    top: 0.8rem;
+    left: 0.8rem;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-hover);
+    border-radius: 50%;
+    background: var(--surface);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.choice-cards .choice-option:hover {
+    border-color: var(--primary-border);
+}
+.choice-cards .choice-option.selected {
+    border-color: var(--primary);
+    background: var(--primary-subtle);
+    box-shadow: inset 0 0 0 1px var(--primary);
+}
+.choice-cards .choice-option.selected::before {
+    border-color: var(--primary);
+    box-shadow: inset 0 0 0 3px var(--surface);
+    background: var(--primary);
+}
+.choice-cards .choice-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+.choice-cards .choice-detail {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+.choice-cards .choice-option.selected .choice-label {
+    color: var(--primary);
+}
+
+/* Le tri des séances reste compact dans la barre d'outils */
+.session-sort .choice-pills .choice-option {
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
+}
+/* Carte de rôle de la fiche membre : alignée avec le bouton d'enregistrement */
+#view-athlete-role-control .choice-cards,
+#role-request-section .choice-cards {
+    margin-bottom: 0.75rem;
+}
+
+@media (max-width: 640px) {
+    .choice-group.choice-pills {
+        display: flex;
+        width: 100%;
+    }
+    .choice-pills .choice-option {
+        flex: 1 1 auto;
+    }
+    .session-sort,
+    .session-sort .choice-pills {
+        width: 100%;
+    }
+    .choice-group.choice-cards {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* ==========================================================================
+   PARAMÈTRES DU CLUB : photo, villes, activités (Entraînement / École d'escalade)
+   ========================================================================== */
+.club-settings-modal {
+    max-width: 560px;
+}
+.club-settings-identity {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+.club-settings-avatar {
+    flex: none;
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gradient-primary);
+    color: white;
+    font-size: 2rem;
+    font-weight: 800;
+    box-shadow: var(--shadow-md);
+}
+.club-settings-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.club-settings-identity-fields {
+    flex: 1;
+    min-width: 0;
+}
+.club-settings-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+.club-settings-identity-fields .form-control[readonly] {
+    background: var(--surface-subtle);
+    color: var(--text-muted);
+}
+.club-settings-identity-fields .settings-hint {
+    margin: 0.3rem 0 0;
+}
+.club-settings-photo-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+}
+.club-settings-photo-pick {
+    cursor: pointer;
+}
+.club-settings-photo-actions .btn-text {
+    margin: 0;
+    color: var(--danger);
+}
+.club-settings-photo-actions .settings-hint {
+    margin: 0;
+}
+
+/* Villes : étiquettes retirables */
+.club-city-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+.club-city-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.35rem 0.3rem 0.7rem;
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius-full);
+    background: var(--primary-subtle);
+    color: var(--primary-dark);
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+.club-city-chip button {
+    width: 22px;
+    height: 22px;
+    min-height: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+.club-city-chip button:hover {
+    background: var(--surface);
+}
+.club-city-chip .ui-icon {
+    width: 12px;
+    height: 12px;
+}
+
+/* Activités : cartes à cocher */
+.club-activity-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 0.6rem;
+}
+.form-group label.club-activity-option,
+.club-activity-option {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    margin: 0;
+    padding: 0.85rem 2.4rem 0.85rem 0.85rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+}
+.club-activity-option:hover {
+    border-color: var(--primary-border);
+}
+.club-activity-option input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+/* Case carrée en haut à droite */
+.club-activity-option::after {
+    content: '';
+    position: absolute;
+    top: 0.85rem;
+    right: 0.85rem;
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--border-hover);
+    border-radius: 5px;
+    background: var(--surface) center / 12px no-repeat;
+}
+.club-activity-option.selected {
+    border-color: var(--primary);
+    background: var(--primary-subtle);
+    box-shadow: inset 0 0 0 1px var(--primary);
+}
+.club-activity-option.selected::after {
+    border-color: var(--primary);
+    background-color: var(--primary);
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>');
+}
+.club-activity-option:focus-within {
+    box-shadow: 0 0 0 3px var(--primary-ring);
+}
+.club-activity-icon {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    background: var(--primary-subtle);
+    color: var(--primary);
+}
+.club-activity-option.selected .club-activity-icon {
+    background: var(--primary);
+    color: white;
+}
+.club-activity-icon .ui-icon {
+    width: 20px;
+    height: 20px;
+}
+.club-activity-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    line-height: 1.3;
+}
+.club-activity-text strong {
+    font-size: 0.92rem;
+    color: var(--text-dark);
+}
+.club-activity-text small {
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+.club-modules-hint {
+    margin-top: 0.6rem;
+}
+.club-modules-hint.is-error {
+    color: var(--danger);
+    font-weight: 600;
+}
+.reg-new-club-group .club-activity-choices {
+    grid-template-columns: 1fr;
+}
+
+/* Engrenage sur la carte du club (onglet Membres) et dans l'onglet École */
+.club-card-settings {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    width: 36px;
+    height: 36px;
+    min-height: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+.club-card-settings:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+.club-card-settings .ui-icon {
+    width: 18px;
+    height: 18px;
+}
+.school-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.school-settings-button {
+    width: 40px;
+    height: 40px;
+    min-height: 0;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+}
+.athlete-club-member-role {
+    margin-top: 0.6rem;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.8rem;
 }
