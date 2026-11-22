@@ -10,6 +10,8 @@ let schoolStudentViews = [];                 // cours où l'utilisateur est él�
 let openedCourseId = null;
 let openedCourseAttendance = new Map();      // date -> document d'appel du cours ouvert
 let showAllCourseDates = false;              // cours ouvert : toutes les dates ou seulement la prochaine
+let courseManageMode = false;                // cours ouvert : écran épuré (false) ou « Gestion du cours » (true)
+let courseViewIndex = null;                  // écran épuré : séance affichée (null = la prochaine)
 const expandedStudentCourses = new Set();    // vue élève : cours dont toutes les dates sont dépliées
 let schoolHolidayCache = new Map();          // zone -> [{ start, end, description }]
 let courseEditorState = null;                // état de la fenêtre de création / modification
@@ -42,13 +44,37 @@ function formatSchoolDate(iso, withYear = false) {
         weekday: 'short', day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {})
     });
 }
+// Jours du cours (0 = dimanche … 6 = samedi). Anciens cours : le jour de la date du premier cours.
+const SCHOOL_WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // affichage du lundi au dimanche
+const SCHOOL_WEEKDAYS_SHORT = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+function getCourseWeekdays(course) {
+    const days = course && Array.isArray(course.weekdays)
+        ? [...new Set(course.weekdays.filter(day => Number.isInteger(day) && day >= 0 && day <= 6))]
+        : [];
+    if(days.length) return days.sort((a, b) => SCHOOL_WEEKDAY_ORDER.indexOf(a) - SCHOOL_WEEKDAY_ORDER.indexOf(b));
+    return course && course.startDate ? [schoolParseDate(course.startDate).getDay()] : [];
+}
+function formatWeekdayList(days) {
+    const names = days.map(day => SCHOOL_WEEKDAYS[day]);
+    return names.length > 1 ? `${names.slice(0, -1).join(', ')} et ${names[names.length - 1]}` : (names[0] || '');
+}
+// Étiquette courte des cartes : « mardi », ou « mar. · jeu. » pour plusieurs jours
 function getCourseWeekdayLabel(course) {
-    return course && course.startDate ? SCHOOL_WEEKDAYS[schoolParseDate(course.startDate).getDay()] : '';
+    const days = getCourseWeekdays(course);
+    return days.length > 1 ? days.map(day => SCHOOL_WEEKDAYS_SHORT[day]).join(' · ') : (SCHOOL_WEEKDAYS[days[0]] || '');
+}
+// Couleur du cours : choisie à la création, sinon une couleur stable de la palette des thèmes
+function getCourseColor(course) {
+    const color = course && course.color;
+    if(color && /^#[0-9a-fA-F]{6}$/.test(color)) return color;
+    let hash = 0;
+    for(const char of String((course && (course.courseId || course.id || course.name)) || '')) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    return CATEGORY_COLOR_PALETTE[hash % CATEGORY_COLOR_PALETTE.length];
 }
 function getCourseScheduleLabel(course) {
-    const day = getCourseWeekdayLabel(course);
+    const days = formatWeekdayList(getCourseWeekdays(course));
     const time = course.startTime ? `${course.startTime}${course.endTime ? ' – ' + course.endTime : ''}` : '';
-    return `Chaque ${day}${time ? ' · ' + time : ''}`;
+    return `Chaque ${days}${time ? ' · ' + time : ''}`;
 }
 
 // --- Droits ---
@@ -176,20 +202,25 @@ function getHolidayForDate(iso, holidays) {
 
 // Récurrence hebdomadaire : les dates en vacances ou retirées à la main ne comptent pas,
 // le cours se prolonge donc jusqu'à atteindre le nombre de séances demandé.
-function computeCourseDates({ startDate, sessionCount, skipHolidays, holidays, excludedDates, extraDates }) {
+// Récurrence : chaque jour coché de la semaine, à partir de la date du premier cours.
+function computeCourseDates({ startDate, weekdays, sessionCount, skipHolidays, holidays, excludedDates, extraDates }) {
     const excluded = new Set(excludedDates || []);
+    const days = new Set(weekdays && weekdays.length ? weekdays : (startDate ? [schoolParseDate(startDate).getDay()] : []));
     const dates = [];
     const skipped = [];
-    if(startDate) {
+    if(startDate && days.size) {
         const cursor = schoolParseDate(startDate);
         let guard = 0;
-        while(dates.length < sessionCount && guard < 260) {
-            const iso = schoolIsoDate(cursor);
-            const holiday = skipHolidays ? getHolidayForDate(iso, holidays) : null;
-            if(holiday) skipped.push({ date: iso, reason: holiday.description });
-            else if(excluded.has(iso)) skipped.push({ date: iso, reason: 'Retirée' });
-            else dates.push(iso);
-            cursor.setDate(cursor.getDate() + 7);
+        // Garde-fou : 3 ans de calendrier au maximum
+        while(dates.length < sessionCount && guard < 1100) {
+            if(days.has(cursor.getDay())) {
+                const iso = schoolIsoDate(cursor);
+                const holiday = skipHolidays ? getHolidayForDate(iso, holidays) : null;
+                if(holiday) skipped.push({ date: iso, reason: holiday.description });
+                else if(excluded.has(iso)) skipped.push({ date: iso, reason: 'Retirée' });
+                else dates.push(iso);
+            }
+            cursor.setDate(cursor.getDate() + 1);
             guard++;
         }
     }
@@ -234,8 +265,8 @@ function renderSchool() {
         const next = dates.find(date => date >= today);
         const done = dates.filter(date => date < today).length;
         const staff = (course.staffIds || []).map(getMemberName).join(', ') || 'Aucun encadrant';
-        return `<div class="card interactive school-course-card" onclick="openCourse('${escapeHtml(course.id)}')">
-            <div class="card-header"><span class="card-category">${escapeHtml(getCourseWeekdayLabel(course))}</span>
+        return `<div class="card interactive school-course-card" style="--course-color:${getCourseColor(course)};" onclick="openCourse('${escapeHtml(course.id)}')">
+            <div class="card-header"><span class="school-course-day">${escapeHtml(getCourseWeekdayLabel(course))}</span>
                 <span class="school-course-count">${(course.students || []).length} élève${(course.students || []).length > 1 ? 's' : ''}</span></div>
             <div class="card-title">${escapeHtml(course.name || 'Cours')}</div>
             <p class="session-card-meta">${escapeHtml(getCourseScheduleLabel(course))}</p>
@@ -252,11 +283,14 @@ function openCourse(courseId) {
     openedCourseId = courseId;
     openedCourseAttendance = new Map();
     showAllCourseDates = false;
+    courseManageMode = false;
+    courseViewIndex = null;
     renderSchool();
     loadCourseAttendance(courseId);
 }
 function closeCourse() {
     openedCourseId = null;
+    courseManageMode = false;
     renderSchool();
 }
 function toggleAllCourseDates() {
@@ -291,17 +325,74 @@ function getAttendanceSummary(course, date) {
 }
 
 function renderCourseDetail(course) {
+    if(courseManageMode) return renderCourseManagement(course);
+    const detail = document.getElementById('school-course-detail');
+    const today = schoolToday();
+    const dates = course.dates || [];
+    const studentCount = (course.students || []).length;
+    const courseId = escapeHtml(course.id);
+
+    // Séance affichée : par défaut la prochaine (celle du jour tant que la journée n'est pas finie,
+    // sinon celle de la semaine suivante) ; les flèches permettent de parcourir toutes les séances.
+    const defaultIndex = getDefaultCourseDateIndex(dates);
+    if(courseViewIndex === null || courseViewIndex < 0 || courseViewIndex >= dates.length) courseViewIndex = defaultIndex;
+    const index = courseViewIndex;
+    const date = dates[index];
+    const summary = date ? getAttendanceSummary(course, date) : null;
+    const session = date && course.sessionByDate && course.sessionByDate[date];
+    const label = !date ? '' : date === today ? 'Cours d’aujourd’hui'
+        : index === defaultIndex && date > today ? 'Prochain cours'
+        : date < today ? 'Cours passé' : 'Cours à venir';
+
+    // Écran épuré : une séance, son appel et sa séance prévue. Le reste est dans « Gestion du cours ».
+    const actions = date ? `
+        <div class="school-date-nav">
+            <button type="button" class="school-date-arrow" onclick="moveCourseDate(-1)" ${index <= 0 ? 'disabled' : ''} title="Séance précédente" aria-label="Séance précédente">${uiIcon('chevron-left')}</button>
+            <div class="school-date-nav-center">
+                <p class="school-next-label">${label}</p>
+                <p class="school-next-date">${escapeHtml(formatSchoolDate(date, true))}</p>
+                <p class="school-date-counter">Séance ${index + 1}/${dates.length}${course.startTime ? ` · ${escapeHtml(course.startTime)}${course.endTime ? ' – ' + escapeHtml(course.endTime) : ''}` : ''}</p>
+                ${index !== defaultIndex ? `<button type="button" class="btn-text school-date-reset" onclick="resetCourseDate()">Revenir au prochain cours</button>` : ''}
+            </div>
+            <button type="button" class="school-date-arrow" onclick="moveCourseDate(1)" ${index >= dates.length - 1 ? 'disabled' : ''} title="Séance suivante" aria-label="Séance suivante">${uiIcon('chevron-right')}</button>
+        </div>
+        <div class="school-action-tiles">
+            <button type="button" class="school-action-tile school-action-primary${summary ? ' is-done' : ''}" onclick="openAttendance('${courseId}', '${date}')">
+                <span class="school-action-icon">${uiIcon('check')}</span>
+                <span class="school-action-text"><strong>${summary ? 'Modifier l’appel' : 'Faire l’appel'}</strong>
+                <small>${summary ? `${summary.present}/${summary.total} présents` : `${studentCount} élève${studentCount > 1 ? 's' : ''} inscrit${studentCount > 1 ? 's' : ''}`}</small></span>
+            </button>
+            <button type="button" class="school-action-tile" onclick="${session ? `viewCourseSession('${courseId}', '${date}')` : `openCourseSessionPicker('${courseId}', '${date}')`}">
+                <span class="school-action-icon">${uiIcon(session ? 'copy' : 'plus')}</span>
+                <span class="school-action-text"><strong>${session ? escapeHtml(session.name || 'Séance') : 'Prévoir une séance'}</strong>
+                <small>${session ? 'Voir la séance du cours' : 'Aucune séance prévue pour ce cours'}</small></span>
+            </button>
+        </div>`
+        : `<div class="empty-state-card">Ce cours n'a aucune date.</div>`;
+
+    detail.innerHTML = `
+        <button class="btn-outline back-button" onclick="closeCourse()">${uiIcon('arrow-left')}Tous les cours</button>
+        <div class="school-course-banner" style="--course-color:${getCourseColor(course)};">
+            <div class="school-course-banner-text">
+                <h3>${escapeHtml(course.name || 'Cours')}</h3>
+                <p>${escapeHtml(getCourseScheduleLabel(course))} · ${studentCount} élève${studentCount > 1 ? 's' : ''}</p>
+            </div>
+            <button type="button" class="school-banner-settings" onclick="openCourseManagement()" title="Gestion du cours" aria-label="Gestion du cours">${CLUB_SETTINGS_ICON}<span>Gestion</span></button>
+        </div>
+        <div class="school-course-simple">${actions}</div>`;
+}
+
+// Gestion du cours : calendrier complet, élèves, modification, suppression
+function renderCourseManagement(course) {
     const detail = document.getElementById('school-course-detail');
     const today = schoolToday();
     const dates = course.dates || [];
     const manager = canManageSchool();
-    // Tout encadrant du cours le gère (séances, appel, élèves, dates) ; seul le gérant
-    // choisit les encadrants et supprime le cours.
     const canEdit = canRunCourse(course);
     const nextDate = dates.find(date => date >= today);
     const staff = (course.staffIds || []).map(getMemberName);
+    const courseId = escapeHtml(course.id);
 
-    // Par défaut, seule la prochaine date (ou la dernière si le cours est terminé) est affichée
     const focusDate = nextDate || dates[dates.length - 1];
     const visibleDates = showAllCourseDates ? dates : dates.filter(date => date === focusDate);
     const datesHtml = visibleDates.map(date => {
@@ -315,12 +406,14 @@ function renderCourseDetail(course) {
                 <div>
                     <strong>${escapeHtml(formatSchoolDate(date, true))}</strong>${state === 'today' ? '<span class="school-today-badge">Aujourd’hui</span>' : ''}
                     <div class="school-date-meta">
-                        ${session ? `<button type="button" class="btn-text school-session-link" onclick="viewCourseSession('${escapeHtml(course.id)}', '${date}')">${escapeHtml(session.name || 'Séance')}</button>` : '<span class="school-muted">Aucune séance prévue</span>'}
+                        ${session
+                            ? `<button type="button" class="btn-text school-session-link" onclick="viewCourseSession('${courseId}', '${date}')">${escapeHtml(session.name || 'Séance')}</button>`
+                            : `<button type="button" class="btn-text school-session-link" onclick="openCourseSessionPicker('${courseId}', '${date}')">Prévoir une séance</button>`}
                         ${summary ? ` · <span class="school-attendance-count">${summary.present}/${summary.total} présents</span>` : ''}
                     </div>
                 </div>
             </div>
-            <button type="button" class="btn-outline school-roll-button" onclick="openAttendance('${escapeHtml(course.id)}', '${date}')">${uiIcon('check')}${summary ? 'Modifier l’appel' : 'Faire l’appel'}</button>
+            <button type="button" class="btn-outline school-roll-button${summary ? ' is-done' : ''}" onclick="openAttendance('${courseId}', '${date}')">${uiIcon('check')}${summary ? 'Modifier l’appel' : 'Faire l’appel'}</button>
         </div>`;
     }).join('') || '<p class="school-muted">Aucune date pour ce cours.</p>';
     const datesToggle = dates.length > 1
@@ -335,17 +428,16 @@ function renderCourseDetail(course) {
         </div>`).join('') || '<p class="school-muted">Aucun élève inscrit.</p>';
 
     detail.innerHTML = `
-        <button class="btn-outline back-button" onclick="closeCourse()">${uiIcon('arrow-left')}Tous les cours</button>
+        <button class="btn-outline back-button" onclick="closeCourseManagement()">${uiIcon('arrow-left')}Retour au cours</button>
         <div class="school-course-header">
             <div>
-                <h3 class="section-title section-title-sm">${escapeHtml(course.name || 'Cours')}</h3>
+                <h3 class="section-title section-title-sm"><span class="school-course-dot" style="--course-color:${getCourseColor(course)};"></span>Gestion · ${escapeHtml(course.name || 'Cours')}</h3>
                 <p class="school-course-line">${escapeHtml(getCourseScheduleLabel(course))} · ${dates.length} séances${course.skipHolidays ? ' · hors vacances (zone ' + escapeHtml(course.holidayZone || 'B') + ')' : ''}</p>
                 <p class="school-course-line">${uiIcon('users')} Encadrants : ${escapeHtml(staff.join(', ') || 'aucun')}</p>
             </div>
             <div class="school-course-actions">
-                ${nextDate ? `<button class="btn-primary" onclick="openAttendance('${escapeHtml(course.id)}', '${nextDate}')">${uiIcon('check')}Appel du ${escapeHtml(formatSchoolDate(nextDate))}</button>` : ''}
-                ${canEdit ? `<button class="btn-outline" onclick="openCourseEditor('${escapeHtml(course.id)}')">${uiIcon('edit')}Modifier</button>` : ''}
-                ${manager ? `<button class="btn-icon" style="color:var(--danger);" title="Supprimer le cours" aria-label="Supprimer le cours" onclick="deleteCourse('${escapeHtml(course.id)}')">${uiIcon('trash')}</button>` : ''}
+                ${canEdit ? `<button class="btn-outline" onclick="openCourseEditor('${courseId}')">${uiIcon('edit')}Modifier le cours</button>` : ''}
+                ${manager ? `<button class="btn-icon" style="color:var(--danger);" title="Supprimer le cours" aria-label="Supprimer le cours" onclick="deleteCourse('${courseId}')">${uiIcon('trash')}</button>` : ''}
             </div>
         </div>
         <div class="school-course-layout">
@@ -357,11 +449,42 @@ function renderCourseDetail(course) {
             <section class="profile-section school-students-section">
                 <div class="school-students-heading">
                     <h3>Élèves (${(course.students || []).length})</h3>
-                    ${canEdit ? `<button class="btn-outline" onclick="openCourseEditor('${escapeHtml(course.id)}', true)">${uiIcon('edit')}Gérer les élèves</button>` : ''}
+                    ${canEdit ? `<button class="btn-outline" onclick="openCourseEditor('${courseId}', true)">${uiIcon('edit')}Gérer les élèves</button>` : ''}
                 </div>
                 <div class="school-student-list">${studentsHtml}</div>
             </section>
         </div>`;
+}
+
+// Index de la séance affichée par défaut : la prochaine (aujourd'hui compris), sinon la dernière
+function getDefaultCourseDateIndex(dates) {
+    const today = schoolToday();
+    const next = dates.findIndex(date => date >= today);
+    return next >= 0 ? next : dates.length - 1;
+}
+function moveCourseDate(step) {
+    const course = schoolCourses.find(item => item.id === openedCourseId);
+    if(!course) return;
+    const max = (course.dates || []).length - 1;
+    courseViewIndex = Math.min(max, Math.max(0, (courseViewIndex === null ? getDefaultCourseDateIndex(course.dates || []) : courseViewIndex) + step));
+    renderCourseDetail(course);
+}
+function resetCourseDate() {
+    courseViewIndex = null;
+    const course = schoolCourses.find(item => item.id === openedCourseId);
+    if(course) renderCourseDetail(course);
+}
+
+function openCourseManagement() {
+    courseManageMode = true;
+    showAllCourseDates = false;
+    const course = schoolCourses.find(item => item.id === openedCourseId);
+    if(course) renderCourseDetail(course);
+}
+function closeCourseManagement() {
+    courseManageMode = false;
+    const course = schoolCourses.find(item => item.id === openedCourseId);
+    if(course) renderCourseDetail(course);
 }
 
 // --- Vue élève : le cours, ses dates et SES présences (sans les autres élèves ni leurs contacts) ---
@@ -382,7 +505,7 @@ function renderStudentCourses() {
             const label = { present: 'présent', absent: 'absent', upcoming: 'à venir', unmarked: 'appel non fait' }[status];
             return `<span class="school-student-date ${status}${date === today ? ' today' : ''}" title="${escapeHtml(formatSchoolDate(date, true))} : ${label}">${escapeHtml(formatSchoolDate(date))}</span>`;
         }).join('');
-        return `<div class="school-student-card">
+        return `<div class="school-student-card" style="--course-color:${getCourseColor(view)};">
             <div class="school-student-card-header">
                 <div>
                     <strong class="cycle-name">${escapeHtml(view.courseName || 'Cours')}</strong>
@@ -422,6 +545,8 @@ async function syncCourseStudentViews(courseId) {
                 clubId: course.clubId,
                 courseId,
                 courseName: course.name || 'Cours',
+                color: getCourseColor(course),
+                weekdays: getCourseWeekdays(course),
                 startDate: course.startDate || '',
                 startTime: course.startTime || '',
                 endTime: course.endTime || '',
@@ -546,6 +671,8 @@ function openCourseEditor(courseId = null, focusStudents = false) {
         excludedDates: [...((course && course.excludedDates) || [])],
         extraDates: [...((course && course.extraDates) || [])],
         students: ((course && course.students) || []).map(student => ({ ...student })),
+        // Nouveau cours : la première couleur de la palette pas encore prise par un autre cours
+        color: course ? getCourseColor(course) : (CATEGORY_COLOR_PALETTE.find(color => !schoolCourses.some(item => getCourseColor(item) === color)) || CATEGORY_COLOR_PALETTE[0]),
         holidays: [],
         dates: [],
         skipped: []
@@ -553,6 +680,10 @@ function openCourseEditor(courseId = null, focusStudents = false) {
     document.getElementById('school-course-modal-title').textContent = course ? 'Modifier le cours' : 'Créer un cours';
     document.getElementById('course-name').value = course ? course.name || '' : '';
     document.getElementById('course-start-date').value = course ? course.startDate || '' : schoolToday();
+    courseEditorState.weekdays = course ? getCourseWeekdays(course) : [schoolParseDate(schoolToday()).getDay()];
+    // Tant que l'encadrant n'a pas touché aux jours, ils suivent la date du premier cours
+    courseEditorState.weekdaysTouched = Boolean(course);
+    renderCourseWeekdayChoices();
     document.getElementById('course-start-time').value = course ? course.startTime || '' : '18:00';
     document.getElementById('course-end-time').value = course ? course.endTime || '' : '19:30';
     document.getElementById('course-session-count').value = course ? course.sessionCount || 30 : 30;
@@ -572,6 +703,7 @@ function openCourseEditor(courseId = null, focusStudents = false) {
 
     document.getElementById('course-add-guest-name').value = '';
     document.getElementById('course-add-guest-contact').value = '';
+    renderCourseColorChoices();
     renderCourseEditorStudents();
     openModal('modal-school-course');
     refreshCourseDatesPreview();
@@ -581,10 +713,53 @@ function openCourseEditor(courseId = null, focusStudents = false) {
     }
 }
 
+function renderCourseColorChoices() {
+    const state = courseEditorState;
+    const container = document.getElementById('course-color-swatches');
+    if(!state || !container) return;
+    container.innerHTML = CATEGORY_COLOR_PALETTE.map(color => `<button type="button" class="color-swatch${color === state.color ? ' active' : ''}" style="--swatch:${color};" aria-label="Couleur ${color}" aria-pressed="${color === state.color}" onclick="selectCourseColor('${color}')"></button>`).join('');
+    const custom = document.getElementById('course-color-custom');
+    if(custom) custom.value = state.color.toLowerCase();
+    const preview = document.getElementById('course-color-preview');
+    if(preview) preview.style.setProperty('--course-color', state.color);
+}
+function selectCourseColor(color) {
+    if(!courseEditorState || !/^#[0-9a-fA-F]{6}$/.test(color)) return;
+    courseEditorState.color = color.toUpperCase();
+    renderCourseColorChoices();
+}
+
+function renderCourseWeekdayChoices() {
+    const state = courseEditorState;
+    const container = document.getElementById('course-weekdays');
+    if(!state || !container) return;
+    container.innerHTML = SCHOOL_WEEKDAY_ORDER.map(day => {
+        const selected = state.weekdays.includes(day);
+        return `<button type="button" class="weekday-chip${selected ? ' selected' : ''}" aria-pressed="${selected}" title="${SCHOOL_WEEKDAYS[day]}" onclick="toggleCourseWeekday(${day})">${SCHOOL_WEEKDAYS_SHORT[day].replace('.', '')}</button>`;
+    }).join('');
+}
+function toggleCourseWeekday(day) {
+    const state = courseEditorState;
+    if(!state) return;
+    state.weekdaysTouched = true;
+    if(state.weekdays.includes(day)) {
+        if(state.weekdays.length === 1) return alert("Le cours doit avoir lieu au moins un jour par semaine.");
+        state.weekdays = state.weekdays.filter(item => item !== day);
+    } else {
+        state.weekdays.push(day);
+    }
+    renderCourseWeekdayChoices();
+    refreshCourseDatesPreview();
+}
+
 async function refreshCourseDatesPreview() {
     if(!courseEditorState) return;
     const state = courseEditorState;
     const startDate = document.getElementById('course-start-date').value;
+    if(startDate && !state.weekdaysTouched) {
+        state.weekdays = [schoolParseDate(startDate).getDay()];
+        renderCourseWeekdayChoices();
+    }
     const sessionCount = Math.min(SCHOOL_MAX_SESSIONS, Math.max(1, parseInt(document.getElementById('course-session-count').value, 10) || 1));
     const skipHolidays = document.getElementById('course-skip-holidays').checked;
     const zone = document.getElementById('course-holiday-zone').value;
@@ -608,6 +783,7 @@ async function refreshCourseDatesPreview() {
     if(courseEditorState !== state) return;
     const result = computeCourseDates({
         startDate, sessionCount, skipHolidays,
+        weekdays: state.weekdays,
         holidays: state.holidays,
         excludedDates: state.excludedDates,
         extraDates: state.extraDates
@@ -680,6 +856,8 @@ async function saveCourse() {
     const data = {
         name, startDate, startTime, endTime, sessionCount,
         students: state.students,
+        color: state.color,
+        weekdays: getCourseWeekdays({ weekdays: state.weekdays, startDate }),
         skipHolidays: document.getElementById('course-skip-holidays').checked,
         holidayZone: document.getElementById('course-holiday-zone').value,
         excludedDates: state.excludedDates,
@@ -871,20 +1049,7 @@ async function saveSchoolAssignment() {
     const button = document.getElementById('school-assign-save');
     button.disabled = true;
     try {
-        // On enregistre une copie des exercices : tous les encadrants du cours peuvent la consulter
-        const blocks = (await getClubSessionBlockSnapshots(session)).slice(0, 100).map(block => ({
-            title: String(block.title || '').slice(0, 200),
-            category: String(block.category || '').slice(0, 80),
-            description: String(block.description || '').slice(0, 5000)
-        }));
-        const entry = {
-            sessionId: session.id,
-            name: String(session.name || 'Séance').slice(0, 120),
-            blocks,
-            assignedBy: currentUser.id,
-            assignedByName: currentUser.username || '',
-            assignedAt: Date.now()
-        };
+        const entry = await buildCourseSessionEntry(session);
         const updates = { updatedAt: Date.now() };
         dates.forEach(date => { updates[`sessionByDate.${date}`] = entry; });
         await db.collection('schoolCourses').doc(course.id).update(updates);
@@ -893,6 +1058,79 @@ async function saveSchoolAssignment() {
     } catch(error) {
         console.error("Erreur d'attribution au cours:", error);
         alert("Impossible d'attribuer la séance au cours : " + error.message);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+// Copie de la séance (nom + exercices) enregistrée dans le cours : tous ses encadrants peuvent la consulter
+async function buildCourseSessionEntry(session) {
+    const blocks = (await getClubSessionBlockSnapshots(session)).slice(0, 100).map(block => ({
+        title: String(block.title || '').slice(0, 200),
+        category: String(block.category || '').slice(0, 80),
+        description: String(block.description || '').slice(0, 5000)
+    }));
+    return {
+        sessionId: session.id,
+        name: String(session.name || 'Séance').slice(0, 120),
+        blocks,
+        assignedBy: currentUser.id,
+        assignedByName: currentUser.username || '',
+        assignedAt: Date.now()
+    };
+}
+
+// « Prévoir une séance » depuis le cours : choix dans la bibliothèque (mes séances + club)
+let coursePickerTarget = null; // { courseId, date }
+function openCourseSessionPicker(courseId, date) {
+    const course = schoolCourses.find(item => item.id === courseId);
+    if(!course || !canRunCourse(course)) return;
+    const sessions = clubSessions
+        .filter(session => !session.archived && session.clubId === currentUser.clubId &&
+            (session.isShared || session.authorId === currentUser.id))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'fr', { sensitivity: 'base', numeric: true }));
+    if(!sessions.length) return alert("Aucune séance disponible : créez d'abord une séance dans l'onglet Séances.");
+    coursePickerTarget = { courseId, date };
+    document.getElementById('school-pick-title').textContent = `Séance du ${formatSchoolDate(date, true)}`;
+    document.getElementById('school-pick-course').textContent = course.name || 'Cours';
+    const select = document.getElementById('school-pick-session');
+    const current = course.sessionByDate && course.sessionByDate[date];
+    select.innerHTML = '<option value="">Choisir une séance…</option>' + sessions.map(session =>
+        `<option value="${escapeHtml(session.id)}">${escapeHtml(session.name || 'Séance')}</option>`).join('');
+    select.value = current && sessions.some(session => session.id === current.sessionId) ? current.sessionId : '';
+    enhanceSelect(select, {
+        placeholder: 'Choisir une séance…',
+        search: true,
+        searchPlaceholder: 'Rechercher une séance…',
+        detail: sessionId => {
+            const session = clubSessions.find(item => item.id === sessionId);
+            if(!session) return '';
+            const count = (session.blocks || []).length;
+            return `${count} exercice${count > 1 ? 's' : ''} · ${session.isShared ? 'Bibliothèque du club' : 'Mes séances'}`;
+        }
+    });
+    closeModal('modal-school-session');
+    openModal('modal-school-pick');
+}
+async function saveCourseSessionPick() {
+    const target = coursePickerTarget;
+    const course = target && schoolCourses.find(item => item.id === target.courseId);
+    const session = clubSessions.find(item => item.id === document.getElementById('school-pick-session').value);
+    if(!course || !canRunCourse(course)) return;
+    if(!session) return alert("Choisissez une séance.");
+    const button = document.getElementById('school-pick-save');
+    button.disabled = true;
+    try {
+        const entry = await buildCourseSessionEntry(session);
+        await db.collection('schoolCourses').doc(course.id).update({
+            [`sessionByDate.${target.date}`]: entry,
+            updatedAt: Date.now()
+        });
+        closeModal('modal-school-pick');
+        coursePickerTarget = null;
+    } catch(error) {
+        console.error("Erreur de choix de la séance du cours:", error);
+        alert("Impossible de prévoir cette séance : " + error.message);
     } finally {
         button.disabled = false;
     }
@@ -912,6 +1150,9 @@ function viewCourseSession(courseId, date) {
         </div>`).join('') || '<p class="school-muted">Cette séance ne contient aucun exercice.</p>';
     document.getElementById('school-session-remove').style.display = canRunCourse(course) ? '' : 'none';
     document.getElementById('school-session-remove').onclick = () => removeCourseSession(courseId, date);
+    const changeButton = document.getElementById('school-session-change');
+    changeButton.style.display = canRunCourse(course) ? '' : 'none';
+    changeButton.onclick = () => openCourseSessionPicker(courseId, date);
     openModal('modal-school-session');
 }
 

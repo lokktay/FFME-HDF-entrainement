@@ -727,11 +727,22 @@
     <div id="modal-school-course" class="modal-overlay"><div class="modal school-course-modal">
         <div class="modal-header"><h2 id="school-course-modal-title">Créer un cours</h2><button class="close-btn" onclick="closeModal('modal-school-course')">&times;</button></div>
         <div class="form-group"><label for="course-name">Nom du cours</label><input id="course-name" class="form-control" type="text" maxlength="80" placeholder="Ex : Baby escalade 4-6 ans"></div>
+        <div class="form-group"><label>Couleur du cours</label>
+            <div class="color-picker">
+                <span id="course-color-preview" class="course-color-preview" aria-hidden="true"></span>
+                <div id="course-color-swatches" class="color-swatches"></div>
+                <label class="color-custom" title="Autre couleur"><input type="color" id="course-color-custom" value="#3b82f6" oninput="selectCourseColor(this.value)" aria-label="Choisir une autre couleur"><span>Autre</span></label>
+            </div>
+        </div>
         <div class="school-form-grid">
-            <div class="form-group"><label for="course-start-date">Premier cours</label><input id="course-start-date" class="form-control" type="date" onchange="refreshCourseDatesPreview()"></div>
+            <div class="form-group"><label for="course-start-date">À partir du</label><input id="course-start-date" class="form-control" type="date" onchange="refreshCourseDatesPreview()"></div>
             <div class="form-group"><label for="course-start-time">Début</label><input id="course-start-time" class="form-control" type="time"></div>
             <div class="form-group"><label for="course-end-time">Fin</label><input id="course-end-time" class="form-control" type="time"></div>
             <div class="form-group"><label for="course-session-count">Nombre de séances</label><input id="course-session-count" class="form-control" type="number" min="1" max="60" inputmode="numeric" onchange="refreshCourseDatesPreview()"></div>
+        </div>
+        <div class="form-group"><label>Jours du cours</label>
+            <div id="course-weekdays" class="weekday-chips" role="group" aria-label="Jours du cours"></div>
+            <p class="settings-hint">Cochez plusieurs jours pour un cours plusieurs fois par semaine (même horaire). Le nombre de séances compte toutes les séances.</p>
         </div>
         <div class="form-group school-holiday-row">
             <label class="settings-toggle"><input type="checkbox" id="course-skip-holidays" onchange="refreshCourseDatesPreview()"><span>Sauter les vacances scolaires</span></label>
@@ -781,7 +792,10 @@
     <div id="modal-school-session" class="modal-overlay"><div class="modal" style="max-width:560px;">
         <div class="modal-header"><div><h2 id="school-session-title">Séance</h2><p id="school-session-meta" class="settings-hint" style="margin:0;"></p></div><button class="close-btn" onclick="closeModal('modal-school-session')">&times;</button></div>
         <div id="school-session-blocks"></div>
-        <button id="school-session-remove" type="button" class="btn-outline" style="color:var(--danger); margin-top:0.5rem;">Retirer cette séance de la date</button>
+        <div class="school-session-actions">
+            <button id="school-session-change" type="button" class="btn-outline">Changer de séance</button>
+            <button id="school-session-remove" type="button" class="btn-outline" style="color:var(--danger);">Retirer cette séance de la date</button>
+        </div>
     </div></div>
 
     <!-- PARAMÈTRES DU CLUB (aussi utilisé pour la création d'un club) -->
@@ -792,7 +806,7 @@
             <div class="club-settings-identity-fields">
                 <label for="club-settings-name" class="club-settings-label">Nom du club</label>
                 <input id="club-settings-name" class="form-control" type="text" maxlength="80" oninput="renderClubSettingsAvatar()">
-                <p id="club-settings-name-hint" class="settings-hint" hidden>Le nom du club ne peut pas être modifié.</p>
+                <p id="club-settings-name-hint" class="settings-hint" hidden>Le nouveau nom s'affichera pour tous les membres du club.</p>
                 <div class="club-settings-photo-actions">
                     <label class="btn-outline club-settings-photo-pick"><input type="file" accept="image/*" class="avatar-input" onchange="handleClubSettingsAvatar(event)"><span id="club-settings-avatar-pick">Ajouter une photo</span></label>
                     <button id="club-settings-avatar-remove" type="button" class="btn-text" onclick="removeClubSettingsAvatar()" hidden>Retirer la photo</button>
@@ -831,6 +845,13 @@
         <div class="modal-header"><div><h2 id="member-role-title">Membre</h2><p class="settings-hint" style="margin:0;">Rôle dans le club</p></div><button class="close-btn" onclick="closeModal('modal-member-role')">&times;</button></div>
         <select id="member-role-select" class="form-control"><option value="athlete">Athlète</option><option value="initiateur">Initiateur</option><option value="coach">Coach</option><option value="entraineur">Entraîneur</option><option value="gerant">Gérant du club</option></select>
         <button class="btn-primary" style="width:100%; margin-top:1rem;" onclick="saveMemberRole()">Enregistrer le rôle</button>
+    </div></div>
+
+    <!-- ÉCOLE : choisir la séance d'une date depuis le cours -->
+    <div id="modal-school-pick" class="modal-overlay"><div class="modal" style="max-width:480px;">
+        <div class="modal-header"><div><h2 id="school-pick-title">Séance</h2><p id="school-pick-course" class="settings-hint" style="margin:0;"></p></div><button class="close-btn" onclick="closeModal('modal-school-pick')">&times;</button></div>
+        <div class="form-group"><select id="school-pick-session" class="form-control" aria-label="Séance"></select></div>
+        <button id="school-pick-save" class="btn-primary" style="width:100%;" onclick="saveCourseSessionPick()">Prévoir cette séance</button>
     </div></div>
 
     <!-- CYCLE D'ENTRAÎNEMENT -->

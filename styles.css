@@ -6393,3 +6393,384 @@ html[data-theme="dark"] .club-picker-toggle {
     padding: 0.35rem 0.8rem;
     font-size: 0.8rem;
 }
+
+/* ==========================================================================
+   ÉCOLE : couleur des cours, écran épuré du cours, tri des séances en menu
+   ========================================================================== */
+
+/* --- Cartes de cours à la couleur du cours --- */
+.card.school-course-card {
+    --course-dark: color-mix(in srgb, var(--course-color) 72%, black);
+    border: none;
+    background: var(--course-color);
+    background: linear-gradient(140deg, var(--course-color) 0%, var(--course-dark) 100%);
+    color: white;
+    box-shadow: 0 6px 18px -8px var(--course-color);
+}
+.card.school-course-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -8px var(--course-color);
+}
+.school-course-card .card-title,
+.school-course-card .session-card-meta,
+.school-course-card .school-course-line,
+.school-course-card .school-course-count {
+    color: white;
+}
+.school-course-card .session-card-meta,
+.school-course-card .school-course-line {
+    opacity: 0.88;
+}
+.school-course-day {
+    padding: 0.2rem 0.65rem;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.22);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.school-course-card .school-course-progress {
+    background: rgba(255, 255, 255, 0.25);
+}
+.school-course-card .school-course-progress span {
+    background: white;
+}
+/* Vue élève : liseré et statistiques à la couleur du cours */
+.school-student-card {
+    border-top: 4px solid var(--course-color, var(--primary));
+}
+.school-student-card .school-student-stats strong {
+    color: var(--course-color, var(--text-dark));
+}
+
+/* --- Écran épuré d'un cours --- */
+.school-course-banner {
+    --course-dark: color-mix(in srgb, var(--course-color) 72%, black);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    border-radius: var(--radius-lg);
+    background: var(--course-color);
+    background: linear-gradient(140deg, var(--course-color) 0%, var(--course-dark) 100%);
+    color: white;
+    box-shadow: 0 8px 22px -10px var(--course-color);
+}
+.school-course-banner h3 {
+    margin: 0;
+    color: white;
+    font-size: 1.25rem;
+}
+.school-course-banner p {
+    margin: 0.2rem 0 0;
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+.school-banner-settings {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 38px;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.16);
+    color: white;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+.school-banner-settings:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+.school-banner-settings .ui-icon {
+    width: 17px;
+    height: 17px;
+}
+.school-course-simple {
+    max-width: 640px;
+    margin: 1.5rem auto 0;
+    text-align: center;
+}
+.school-next-label {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.school-next-date {
+    margin: 0.2rem 0 1.1rem;
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--text-dark);
+}
+.school-action-tiles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.85rem;
+}
+.school-action-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 1.4rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    color: var(--text-dark);
+    font: inherit;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+.school-action-tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary-border);
+    box-shadow: var(--shadow-md);
+}
+.school-action-icon {
+    width: 52px;
+    height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--primary-subtle);
+    color: var(--primary);
+}
+.school-action-icon .ui-icon {
+    width: 24px;
+    height: 24px;
+}
+.school-action-primary {
+    border-color: transparent;
+    background: var(--gradient-button);
+    color: white;
+}
+.school-action-primary:hover {
+    border-color: transparent;
+}
+.school-action-primary .school-action-icon {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+.school-action-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.school-action-text strong {
+    font-size: 1.02rem;
+    overflow-wrap: anywhere;
+}
+.school-action-text small {
+    font-size: 0.8rem;
+    opacity: 0.8;
+}
+.school-course-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 0.45rem;
+    border-radius: 50%;
+    background: var(--course-color);
+    vertical-align: 0.05em;
+}
+.school-session-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+.course-color-preview {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    background: var(--course-color, var(--primary));
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- Tri des séances : menu déroulant stylisé et compact --- */
+.session-sort .ui-picker {
+    position: relative;
+    width: auto;
+    min-width: 200px;
+}
+.session-sort .ui-picker .club-picker-toggle {
+    min-height: 0;
+    padding: 0.4rem 0.8rem 0.4rem 0.4rem;
+    border-radius: var(--radius-full);
+    font-size: 0.86rem;
+}
+.session-sort .ui-picker .club-picker-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    left: auto;
+    z-index: 60;
+    min-width: 220px;
+    margin-top: 0;
+    box-shadow: var(--shadow-xl);
+}
+.session-sort .club-picker-option .ui-picker-lead {
+    display: none;
+}
+.session-sort .ui-picker-lead {
+    width: 1.6rem;
+    height: 1.6rem;
+}
+
+@media (max-width: 640px) {
+    .school-course-banner {
+        padding: 1rem;
+    }
+    .school-banner-settings span {
+        display: none;
+    }
+    .school-banner-settings {
+        width: 40px;
+        padding: 0;
+        justify-content: center;
+    }
+    .school-action-tiles {
+        grid-template-columns: 1fr;
+    }
+    .school-action-tile {
+        flex-direction: row;
+        text-align: left;
+        padding: 1rem;
+    }
+    .session-sort .ui-picker {
+        width: 100%;
+    }
+    .session-sort .ui-picker .club-picker-list {
+        left: 0;
+        right: 0;
+    }
+}
+
+/* --- École : navigation entre les séances d'un cours (flèches + « Séance 5/30 ») --- */
+.school-date-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1.1rem;
+}
+.school-date-nav-center {
+    flex: 1;
+    min-width: 0;
+}
+.school-date-nav .school-next-date {
+    margin: 0.15rem 0 0.1rem;
+}
+.school-date-counter {
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.school-date-reset {
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+}
+.school-date-arrow {
+    flex: none;
+    width: 46px;
+    height: 46px;
+    min-height: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    background: var(--surface);
+    color: var(--primary);
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+.school-date-arrow:hover:not(:disabled) {
+    border-color: var(--primary);
+    background: var(--primary-subtle);
+}
+.school-date-arrow:active:not(:disabled) {
+    transform: scale(0.94);
+}
+.school-date-arrow:disabled {
+    opacity: 0.35;
+    cursor: default;
+    box-shadow: none;
+}
+.school-date-arrow .ui-icon {
+    width: 22px;
+    height: 22px;
+    stroke-width: 2.2;
+}
+
+/* --- École : l'appel enregistré passe le bouton en vert --- */
+.school-action-primary.is-done {
+    background: linear-gradient(135deg, #16A34A 0%, #15803D 100%);
+    box-shadow: 0 8px 20px -10px #16A34A;
+}
+.school-roll-button.is-done {
+    border-color: #16A34A;
+    background: #16A34A;
+    color: white;
+}
+.school-roll-button.is-done:hover {
+    background: #15803D;
+    border-color: #15803D;
+    color: white;
+}
+
+/* --- École : jours du cours (plusieurs jours par semaine possibles) --- */
+.weekday-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.weekday-chip {
+    min-width: 48px;
+    min-height: 40px;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-body);
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: capitalize;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+.weekday-chip:hover {
+    border-color: var(--primary-border);
+}
+.weekday-chip.selected {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: white;
+}
+@media (max-width: 640px) {
+    .weekday-chips {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 0.3rem;
+    }
+    .weekday-chip {
+        min-width: 0;
+        padding: 0.35rem 0;
+    }
+}

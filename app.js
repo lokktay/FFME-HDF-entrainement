@@ -123,6 +123,8 @@ const UI_ICON_PATHS = {
     check: '<path d="M20 6L9 17l-5-5"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
     'chevron-down': '<path d="M6 9l6 6 6-6"/>',
+    'chevron-left': '<path d="M15 18l-6-6 6-6"/>',
+    'chevron-right': '<path d="M9 18l6-6-6-6"/>',
     'arrow-left': '<path d="M19 12H5M12 19l-7-7 7-7"/>',
     'arrow-up': '<path d="M12 19V5M5 12l7-7 7 7"/>',
     'arrow-down': '<path d="M12 5v14M19 12l-7 7-7-7"/>',
@@ -131,6 +133,7 @@ const UI_ICON_PATHS = {
     chat: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.8A8 8 0 1 1 21 12z"/>',
     expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/>',
+    sort: '<path d="M3 6h18M6 12h12M10 18h4"/>',
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.3-2.4 3.8M12 17v.01"/>'
 };
 function uiIcon(name, extraClass = '') {
@@ -961,11 +964,12 @@ async function joinClub() {
     }
 }
 
-function validateNewClubName(name) {
+// excludeClubId : le club renommé (son nom actuel ne compte pas comme un doublon)
+function validateNewClubName(name, excludeClubId = null) {
     if(!name) return "Saisissez le nom du club.";
     if(name.length > 80) return "Le nom du club ne peut pas dépasser 80 caractères.";
     const normalizedName = name.toLocaleLowerCase('fr-FR');
-    if(allClubs.some(club => String(club.name || '').trim().toLocaleLowerCase('fr-FR') === normalizedName)) {
+    if(allClubs.some(club => club.id !== excludeClubId && String(club.name || '').trim().toLocaleLowerCase('fr-FR') === normalizedName)) {
         return "Un club portant ce nom existe déjà.";
     }
     return '';
@@ -3179,7 +3183,10 @@ function renderCoachDashboard() {
     const sortSelect = document.getElementById('sort-sessions');
     if(sortSelect) {
         sortSelect.value = coachSessionSort;
-        enhanceChoices(sortSelect, { variant: 'pills', label: 'Trier les séances' });
+        // Menu déroulant stylisé, compact, à côté de la recherche
+        enhanceSelect(sortSelect, {
+            avatar: () => `<span class="ui-picker-lead">${uiIcon('sort')}</span>`
+        });
         // Le tri ne s'applique qu'aux séances du coach et du club
         sortSelect.closest('.session-sort').style.display = currentSessionLibraryTab === 'global' ? 'none' : '';
     }
@@ -5445,7 +5452,8 @@ function openClubSettings(mode = 'edit', newName = '') {
     document.getElementById('club-settings-title').textContent = mode === 'create' ? 'Créer un club' : 'Paramètres du club';
     const nameInput = document.getElementById('club-settings-name');
     nameInput.value = clubSettingsState.name;
-    nameInput.readOnly = mode === 'edit';
+    // Le gérant peut renommer son club
+    nameInput.readOnly = false;
     document.getElementById('club-settings-name-hint').hidden = mode !== 'edit';
     document.getElementById('club-settings-training').checked = modules.training;
     document.getElementById('club-settings-school').checked = modules.school;
@@ -5556,6 +5564,16 @@ async function saveClubSettings() {
     button.disabled = true;
     try {
         const updates = { cities: state.cities, modules };
+        const newName = document.getElementById('club-settings-name').value.trim().replace(/\s+/g, ' ');
+        const club0 = allClubs.find(item => item.id === state.clubId);
+        if(club0 && newName !== (club0.name || '')) {
+            const nameError = validateNewClubName(newName, state.clubId);
+            if(nameError) {
+                button.disabled = false;
+                return alert(nameError);
+            }
+            updates.name = newName;
+        }
         if(state.avatarChanged) updates.avatar = state.avatar || firebase.firestore.FieldValue.delete();
         await db.collection('clubs').doc(state.clubId).update(updates);
         const club = allClubs.find(item => item.id === state.clubId);
@@ -5563,6 +5581,7 @@ async function saveClubSettings() {
         if(club) {
             club.cities = state.cities;
             club.modules = modules;
+            if(updates.name) club.name = updates.name;
             if(state.avatarChanged) club.avatar = state.avatar || null;
         }
         closeModal('modal-club-settings');

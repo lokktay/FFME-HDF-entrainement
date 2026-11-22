@@ -224,7 +224,7 @@ service cloud.firestore {
     function validSchoolCourse(data) {
       return data.keys().hasOnly(['id', 'clubId', 'name', 'startDate', 'startTime', 'endTime', 'sessionCount',
                                   'skipHolidays', 'holidayZone', 'excludedDates', 'extraDates', 'dates',
-                                  'staffIds', 'students', 'sessionByDate', 'createdBy', 'createdAt', 'updatedAt']) &&
+                                  'staffIds', 'students', 'sessionByDate', 'color', 'weekdays', 'createdBy', 'createdAt', 'updatedAt']) &&
         data.name is string && data.name.size() > 0 && data.name.size() <= 80 &&
         data.dates is list && data.dates.size() <= 80 &&
         data.staffIds is list && data.staffIds.size() <= 50 &&
@@ -355,7 +355,7 @@ service cloud.firestore {
         request.resource.data.get('managerIds', []).hasAny([request.auth.uid]);
       allow update: if isAuth() &&
         ((isClubManager(clubId) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerIds', 'avatar', 'categories', 'categoryColors', 'modules', 'cities']) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['managerIds', 'name', 'avatar', 'categories', 'categoryColors', 'modules', 'cities']) &&
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['managerIds']) ||
            (request.resource.data.get('managerIds', []).size() > 0 &&
             (request.resource.data.managerIds.hasAny(resource.data.get('managerIds', [])) ||
@@ -626,7 +626,7 @@ service cloud.firestore {
          canRunSchoolCourse(get(/databases/$(database)/documents/schoolCourses/$(resource.data.courseId)).data));
       allow create, update: if isAuth() &&
         viewId == request.resource.data.courseId + '_' + request.resource.data.userId &&
-        request.resource.data.keys().hasOnly(['userId', 'clubId', 'courseId', 'courseName', 'startDate',
+        request.resource.data.keys().hasOnly(['userId', 'clubId', 'courseId', 'courseName', 'color', 'weekdays', 'startDate',
                                               'startTime', 'endTime', 'dates', 'attendance', 'updatedAt']) &&
         request.resource.data.userId is string &&
         request.resource.data.dates is list &&
