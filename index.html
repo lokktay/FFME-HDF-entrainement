@@ -33,7 +33,7 @@
     <!-- Lien vers notre fichier de style séparé.
          ?v=… : à incrémenter avec CACHE_NAME (service-worker.js) à chaque mise en ligne, pour que
          le navigateur ne mélange jamais un ancien styles.css/app.js avec le nouveau index.html -->
-    <link rel="stylesheet" href="styles.css?v=22">
+    <link rel="stylesheet" href="styles.css?v=23">
     <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0055A4">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -463,17 +463,15 @@
                 </div>
                 <div class="club-management-controls">
                     <label class="club-select-wrap">
-                        <span class="sr-only">Choisir un club à rejoindre ou en créer un</span>
-                        <select id="available-clubs-select" class="form-control club-select" onchange="handleAvailableClubChange()"></select>
+                        <span class="sr-only">Choisir un club à rejoindre</span>
+                        <select id="available-clubs-select" class="form-control club-select"></select>
                     </label>
                     <button id="join-club-submit" class="btn-primary" onclick="joinClub()">Rejoindre le club</button>
                 </div>
-                <div id="create-club-controls" class="club-management-controls club-create-controls" style="display:none;">
-                    <label class="sr-only" for="new-club-name">Nom du nouveau club</label>
-                    <input id="new-club-name" class="form-control" type="text" maxlength="80" placeholder="Nom du nouveau club">
-                    <button id="create-club-submit" class="btn-primary" onclick="createClub()">Créer le club</button>
+                <div class="club-management-controls club-create-controls">
+                    <button id="create-club-submit" class="btn-outline" type="button" onclick="createClub()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Créer un nouveau club</button>
                 </div>
-                <p class="club-create-hint">En créant ce club, vous en deviendrez automatiquement le gérant.</p>
+                <p class="club-create-hint">Tout le monde peut créer un club, même en étant déjà membre d'un autre. Vous en deviendrez automatiquement le gérant.</p>
             </div>
             </div>
 
@@ -522,6 +520,12 @@
                 <button class="btn-outline" onclick="openLinkChildModal()" id="btn-link-child" style="display:none;">Lier un compte enfant</button>
                 <div id="profile-linked-children-list" class="settings-linked-list"></div>
                 <p id="settings-family-empty" class="settings-hint" style="display:none;">Aucune option parent / enfant n'est disponible pour ce compte.</p>
+            </div>
+
+            <div id="settings-tutorials-section" class="profile-section settings-section">
+                <h3>Tutoriels</h3>
+                <p class="settings-hint">Revoyez à tout moment l'explication d'un onglet ou des nouveautés.</p>
+                <div id="settings-tutorials-list" class="settings-tutorials-list"></div>
             </div>
 
             <div id="settings-coach-section" class="profile-section settings-section coach-settings-section" style="display:none;">
@@ -605,7 +609,7 @@
     <div id="modal-create-session" class="modal-overlay"><div class="modal modal-builder"><div class="modal-header" style="margin-bottom: 0; padding: 1.5rem; background: var(--surface);"><h2 id="modal-session-title-text">Créer une Séance</h2><button class="close-btn" onclick="closeModal('modal-create-session')">&times;</button></div><div class="builder-container"><div class="builder-sidebar"><div class="flex-between"><h3>Ressources</h3><button class="btn-outline" onclick="openCreateBlock()"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Bloc</button></div><div id="builder-filters" class="filter-tags" style="margin-top:1rem;"></div><div id="builder-blocks-list"></div></div><div class="builder-main"><h3>Structure (Glissez-déposez)</h3><div id="session-sequence" style="flex:1; overflow-y:auto; border: 2px dashed var(--border-hover); padding:1rem; margin-bottom:1.5rem; background:var(--bg-color); border-radius:var(--radius-md);"></div><div class="form-group"><input type="text" id="session-name" class="form-control" placeholder="Nom de la séance..."></div><button id="save-session-button" class="btn-primary" style="width:100%; padding: 1.1rem;" onclick="saveSession()">Enregistrer la séance</button></div></div></div></div>
 
     <!-- MODAL : Attribuer avec Groupes -->
-    <div id="modal-assign-session" class="modal-overlay"><div class="modal assignment-modal"><div class="modal-header"><h2>Attribuer une séance</h2><button class="close-btn" onclick="closeModal('modal-assign-session')">&times;</button></div><div id="assign-groups-container" class="assignment-groups"></div><div class="group-member-picker-heading assignment-picker-heading"><div><label for="assignment-member-search">Tous les membres (athlètes et coachs)</label><span id="assignment-member-count" class="group-member-count">0 sélectionné</span></div><input id="assignment-member-search" class="form-control group-member-search" type="search" placeholder="Rechercher un membre…" oninput="renderAssignmentMemberPicker()"></div><div class="assignment-select-actions"><button class="btn-outline" type="button" onclick="selectAllAthletes()">Tout sélectionner</button></div><div id="athlete-checklist" class="group-member-picker assignment-member-picker"></div><button class="btn-primary assignment-submit-button" onclick="saveAssignments()">Valider l'attribution</button></div></div>
+    <div id="modal-assign-session" class="modal-overlay"><div class="modal assignment-modal"><div class="modal-header"><h2>Attribuer une séance</h2><button class="close-btn" onclick="closeModal('modal-assign-session')">&times;</button></div><div id="assign-groups-container" class="assignment-groups"></div><div class="group-member-picker-heading assignment-picker-heading"><div><label for="assignment-member-search">Tous les membres (athlètes et coachs)</label><span id="assignment-member-count" class="group-member-count">0 sélectionné</span></div><input id="assignment-member-search" class="form-control group-member-search" type="search" placeholder="Rechercher un membre…" oninput="renderAssignmentMemberPicker()"></div><div class="assignment-select-actions"><button class="btn-outline" type="button" onclick="selectAllAthletes()">Tout sélectionner</button></div><div id="athlete-checklist" class="group-member-picker assignment-member-picker"></div><div class="assignment-repeat"><div><strong>Nombre de fois</strong><small>Ex. 2× pour faire la séance deux fois dans la semaine</small></div><div class="assignment-repeat-stepper"><button id="assignment-repeat-minus" type="button" class="btn-icon" aria-label="Une fois de moins" onclick="changeAssignmentRepeat(-1)">−</button><span id="assignment-repeat-value" aria-live="polite">1×</span><button id="assignment-repeat-plus" type="button" class="btn-icon" aria-label="Une fois de plus" onclick="changeAssignmentRepeat(1)">+</button></div></div><button class="btn-primary assignment-submit-button" onclick="saveAssignments()">Valider l'attribution</button></div></div>
 
     <!-- MODAL : Vue Séance -->
     <div id="modal-view-session" class="modal-overlay" style="z-index: 1060;">
@@ -694,9 +698,8 @@
 
             <!-- BLOC COACH READONLY -->
             <div id="view-session-coach-readonly" style="display:none;">
-                <div id="view-session-content-coach" style="max-height:45vh; overflow-y:auto; padding-right: 0.5rem; margin-bottom:1rem;"></div>
-                
-                <div id="view-session-coach-report" style="background:var(--surface); padding:2rem; border-radius:var(--radius-lg); border: 1px solid var(--border-color);">
+                <!-- Bilan en premier : visible dès l'ouverture, sans faire défiler les exercices -->
+                <div id="view-session-coach-report" style="background:var(--surface); padding:1.25rem 1.5rem; border-radius:var(--radius-lg); border: 1px solid var(--border-color); margin-bottom:1rem;">
                     <h3 style="margin-top:0; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">Bilan de l'athlète</h3>
                     <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; margin-bottom:1.5rem; text-align:center;">
                         <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md);">
@@ -715,6 +718,9 @@
                     <label style="font-weight:800; display:block; margin-bottom:0.5rem;">Notes</label>
                     <div style="background:var(--bg-color); padding:1rem; border-radius:var(--radius-md); font-size:0.95rem; white-space:pre-wrap; min-height:60px;" id="ro-val-note"></div>
                 </div>
+
+                <h3 class="ro-blocks-title" style="margin:0 0 0.5rem;">Exercices de la séance</h3>
+                <div id="view-session-content-coach" style="padding-right: 0.5rem;"></div>
             </div>
         </div>
     </div>
@@ -724,7 +730,7 @@
 
     <!-- Modals Skills & Calendar -->
     <div id="modal-skills" class="modal-overlay" style="z-index:1050;"><div class="modal modal-large"><div class="modal-header"><h2 style="font-size:1.5rem;">Auto-évaluation (0 à 10)</h2><button class="close-btn" onclick="closeModal('modal-skills')">&times;</button></div><div style="display: flex; gap: 2rem; flex-wrap:wrap;"><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--ffme-blue); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Technique & Gestuelle</h3><div id="skills-form-t1" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div><div style="flex: 1; min-width:280px; background:var(--bg-color); padding:2rem; border-radius:var(--radius-lg); border:1px solid var(--border-color);"><h3 style="color:var(--danger); border-bottom:2px solid var(--border-color); padding-bottom:0.75rem; margin-bottom:1.5rem;">Physique & Mental</h3><div id="skills-form-t2" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;"></div></div></div><button class="btn-primary" style="width:100%; margin-top:2rem; padding:1.25rem; font-size:1.15rem;" onclick="saveSkills()">Enregistrer</button></div></div>
-    <div id="modal-calendar-note" class="modal-overlay" style="z-index: 1050;"><div class="modal" style="max-width: 480px;"><div class="modal-header"><h3 id="cal-note-date" style="margin:0; font-size: 1.35rem; color:var(--ffme-blue-dark);">Date</h3><button class="close-btn" onclick="closeModal('modal-calendar-note')">&times;</button></div><div class="form-group"><label>Statut pour ce jour :</label><select id="cal-note-status" class="form-control"><option value="false">Repos</option><option value="true">Entraînement</option></select></div><div class="form-group"><label>Lier à une séance :</label><select id="cal-note-session" class="form-control" onchange="updateCalNoteSessionButton()"></select><button id="cal-note-open-session" type="button" class="btn-outline cal-note-open-session" style="display:none;" onclick="openCalendarLinkedSession()">Voir la séance liée</button></div><div class="form-group"><label>Note libre :</label><input type="text" id="cal-note-text" class="form-control"></div><button class="btn-primary" style="width:100%; margin-top:1rem; padding:1rem;" onclick="saveCalendarNote()">Valider</button></div></div>
+    <div id="modal-calendar-note" class="modal-overlay" style="z-index: 1050;"><div class="modal" style="max-width: 480px;"><div class="modal-header"><h3 id="cal-note-date" style="margin:0; font-size: 1.35rem; color:var(--ffme-blue-dark);">Date</h3><button class="close-btn" onclick="closeModal('modal-calendar-note')">&times;</button></div><div class="form-group"><label>Statut pour ce jour :</label><select id="cal-note-status" class="form-control" onchange="updateCalNoteStatus()"><option value="rest">Repos</option><option value="training">Entraînement</option><option value="competition">Compétition</option></select></div><div class="form-group" id="cal-note-competition-group" style="display:none;"><label for="cal-note-competition">Nom de la compétition :</label><input type="text" id="cal-note-competition" class="form-control" maxlength="120" placeholder="Ex : Coupe régionale de bloc"></div><div class="form-group"><label>Lier à une séance :</label><select id="cal-note-session" class="form-control" onchange="updateCalNoteSessionButton()"></select><button id="cal-note-open-session" type="button" class="btn-outline cal-note-open-session" style="display:none;" onclick="openCalendarLinkedSession()">Voir la séance liée</button></div><div class="form-group"><label>Note libre :</label><input type="text" id="cal-note-text" class="form-control"></div><button class="btn-primary" style="width:100%; margin-top:1rem; padding:1rem;" onclick="saveCalendarNote()">Valider</button></div></div>
 
     <!-- ÉCOLE : création / modification d'un cours -->
     <div id="modal-school-course" class="modal-overlay"><div class="modal school-course-modal">
@@ -883,8 +889,9 @@
     </div>
 
     <!-- Liens vers les fichiers JavaScript (school.js ne fait que déclarer des fonctions : chargé en premier) -->
-    <script defer src="school.js?v=22"></script>
-    <script defer src="app.js?v=22"></script>
+    <script defer src="school.js?v=23"></script>
+    <script defer src="tutorials.js?v=23"></script>
+    <script defer src="app.js?v=23"></script>
     <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

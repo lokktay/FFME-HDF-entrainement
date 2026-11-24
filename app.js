@@ -85,7 +85,7 @@ let activeChatUserId = null; let editingGroupId = null; let editingCompIndex = n
 let groupEditorSelectedIds = new Set();
 let groupEditorAvatar = null;
 let assignmentSelectedIds = new Set();
-let assignmentPendingAthleteIds = new Set();
+let assignmentPendingAthleteIds = new Map();
 let viewedBlockId = null;
 let linkedChildIds = [];
 let linkedParentIds = [];
@@ -757,25 +757,12 @@ function renderProfileClubs() {
     const clubManagementPanel = clubSelect.closest('.club-management-panel');
     if(clubManagementPanel) clubManagementPanel.style.display = isViewingChild ? 'none' : '';
     const availableClubs = allClubs.filter(club => !clubIds.includes(club.id));
-    clubSelect.innerHTML = '<option value="">Choisir un club</option>' +
-        availableClubs.map(club => `<option value="${escapeHtml(club.id)}">${escapeHtml(club.name)}</option>`).join('') +
-        '<option value="_new_">Créer un nouveau club…</option>';
-    if([...availableClubs, { id: '_new_' }].some(club => club.id === selectedClubId)) {
+    clubSelect.innerHTML = '<option value="">Choisir un club à rejoindre</option>' +
+        availableClubs.map(club => `<option value="${escapeHtml(club.id)}">${escapeHtml(club.name)}</option>`).join('');
+    if(availableClubs.some(club => club.id === selectedClubId)) {
         clubSelect.value = selectedClubId;
     }
     enhanceClubSelect(clubSelect);
-    handleAvailableClubChange();
-}
-
-function handleAvailableClubChange() {
-    const clubSelect = document.getElementById('available-clubs-select');
-    const joinButton = document.getElementById('join-club-submit');
-    const createControls = document.getElementById('create-club-controls');
-    if(!clubSelect || !joinButton || !createControls) return;
-
-    const creatingClub = clubSelect.value === '_new_';
-    joinButton.style.display = creatingClub ? 'none' : '';
-    createControls.style.display = creatingClub ? 'flex' : 'none';
 }
 
 function renderMyRoleRequests() {
@@ -979,17 +966,14 @@ function validateNewClubName(name, excludeClubId = null) {
 // la création elle-même a lieu à l'enregistrement de cette fenêtre.
 async function createClub(settings = null) {
     if(originalParentUser) return alert("Revenez au compte parent pour créer un club.");
-    const nameInput = document.getElementById('new-club-name');
-    if(!settings) {
-        const error = validateNewClubName(nameInput.value.trim());
-        if(error) return alert(error);
-        return openClubSettings('create', nameInput.value.trim());
-    }
+    // Ouverture de la fenêtre de création (nom, photo, villes, activités) : possible pour tout compte,
+    // qu'il soit déjà membre d'un ou plusieurs clubs ou non.
+    if(!settings) return openClubSettings('create', '');
     const name = settings.name;
     const error = validateNewClubName(name);
     if(error) return alert(error);
 
-    const submitButton = document.getElementById('create-club-submit');
+    const submitButton = document.getElementById('club-settings-save');
     if(submitButton.disabled) return;
     submitButton.disabled = true;
     try {
@@ -1016,7 +1000,6 @@ async function createClub(settings = null) {
         allClubs = [...allClubs.filter(item => item.id !== club.id), club];
         currentUser.clubIds = clubIds;
         currentUser.clubId = club.id;
-        nameInput.value = '';
         closeModal('modal-club-settings');
         startRealtimeListeners(club.id);
         showApp();
@@ -1549,6 +1532,7 @@ function refreshCurrentTab() {
        document.getElementById('coach-ath-view-historique').style.display !== 'none') {
         renderCoachAthleteHistory();
     }
+    if(athleteProfileModal && athleteProfileModal.style.display === 'flex') refreshVisibleCalendars();
 }
 
 function getGlobalLibrarySessions() {
@@ -2488,7 +2472,25 @@ function renderHeaderUser() {
     target.innerHTML = userText;
 }
 
+// Onglet ouvert, mémorisé pour la session du navigateur : une actualisation ramène au même endroit
+const ACTIVE_TAB_STORAGE_KEY = 'ffme-active-tab';
+function getSavedActiveTab() {
+    try { return sessionStorage.getItem(ACTIVE_TAB_STORAGE_KEY); } catch(error) { return null; }
+}
+function saveActiveTab(tab) {
+    try { sessionStorage.setItem(ACTIVE_TAB_STORAGE_KEY, tab); } catch(error) { /* stockage indisponible */ }
+}
+// L'onglet n'est rouvert que s'il est accessible (bouton visible) avec le club et le rôle actuels
+function canRestoreTab(tab) {
+    if(!tab || !document.getElementById(tab + '-space')) return false;
+    if(tab === 'settings') return true;
+    if(tab === 'platform-admin') return isPlatformAdmin();
+    const navButton = document.getElementById('nav-' + tab);
+    return Boolean(navButton && navButton.style.display !== 'none' && getComputedStyle(navButton).display !== 'none');
+}
+
 function showApp() {
+    const tabToRestore = getSavedActiveTab();
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('app-content').style.display = 'block';
     const adminNav = document.getElementById('nav-platform-admin');
@@ -2519,6 +2521,7 @@ function showApp() {
     }
     updateSchoolNavVisibility();
     if(!currentUser.clubId) switchTab('settings');
+    else if(canRestoreTab(tabToRestore)) switchTab(tabToRestore);
     refreshPushState();
     handleChatDeepLink();
     const age = (new Date() - new Date(currentUser.dob)) / (1000*60*60*24*365.25);
@@ -2535,6 +2538,9 @@ function switchTab(tab) {
     const target = document.getElementById(tab + '-space');
     if(!target) return;
     target.classList.add('active');
+    saveActiveTab(tab);
+    // Premier passage sur cet onglet (ou nouveautés) : petit tutoriel (tutorials.js)
+    if(typeof maybeShowTutorials === 'function') maybeShowTutorials();
     const navBtn = document.getElementById('nav-' + tab); if(navBtn) navBtn.classList.add('active');
     if(tab === 'platform-admin') {
         const now = new Date();
@@ -3216,7 +3222,9 @@ function renderCoachDashboard() {
         const pendingAssigns = clubAssignments.filter(a => a.sessionId === s.id && !a.isDone);
         let assignedHtml = '';
         if(pendingAssigns.length > 0) {
-            const names = pendingAssigns.map(a => { const u = clubMembers.find(x=>x.id===a.athleteId); return u ? escapeHtml(u.username) : ''; }).filter(Boolean).join(', ');
+            const pendingCounts = new Map();
+            pendingAssigns.forEach(a => pendingCounts.set(a.athleteId, (pendingCounts.get(a.athleteId) || 0) + 1));
+            const names = [...pendingCounts].map(([athleteId, count]) => { const u = clubMembers.find(x=>x.id===athleteId); return u ? escapeHtml(u.username) + (count > 1 ? ` (${count}×)` : '') : ''; }).filter(Boolean).join(', ');
             assignedHtml = `<div class="session-card-assigned">En cours par : ${names}</div>`;
         }
 
@@ -3275,10 +3283,13 @@ async function publishToClub(id) {
 // --- ATTRIBUTION AVEC GROUPES ---
 function openAssignModal(sessId) {
     sessionToAssignId = sessId; 
-    const pendingExist = clubAssignments.filter(a => a.sessionId === sessId && !a.isDone);
-    const pendingAthleteIds = new Set(pendingExist.map(assignment => assignment.athleteId));
+    // Nombre d'attributions encore à faire par membre : la même séance peut être donnée plusieurs fois
+    const pendingAthleteIds = new Map();
+    clubAssignments.filter(a => a.sessionId === sessId && !a.isDone)
+        .forEach(a => pendingAthleteIds.set(a.athleteId, (pendingAthleteIds.get(a.athleteId) || 0) + 1));
     assignmentPendingAthleteIds = pendingAthleteIds;
     assignmentSelectedIds = new Set();
+    setAssignmentRepeat(1);
     
     const grpContainer = document.getElementById('assign-groups-container');
     grpContainer.innerHTML = '';
@@ -3309,14 +3320,14 @@ function openAssignModal(sessId) {
 
 function renderAssignmentMemberOption(member, pendingAthleteIds) {
     if(!member) return '';
-    const isPending = pendingAthleteIds.has(member.id);
+    const pendingCount = pendingAthleteIds.get(member.id) || 0;
     const avatar = member.avatar
         ? `<img src="${escapeHtml(member.avatar)}" alt="" class="group-member-avatar">`
         : '<span class="group-member-avatar group-member-avatar-placeholder" aria-hidden="true">' + uiIcon('user') + '</span>';
-    return `<label class="group-member-option assignment-member-option ${assignmentSelectedIds.has(member.id) ? 'selected' : ''} ${isPending ? 'assignment-member-pending' : ''}" data-member-name="${escapeHtml(member.username || '')}">
-        <input type="checkbox" class="athlete-checkbox" value="${escapeHtml(member.id)}" ${assignmentSelectedIds.has(member.id) || isPending ? 'checked' : ''} ${isPending ? 'disabled' : ''} onchange="updateAssignmentSelection(this)">
+    return `<label class="group-member-option assignment-member-option ${assignmentSelectedIds.has(member.id) ? 'selected' : ''}" data-member-name="${escapeHtml(member.username || '')}">
+        <input type="checkbox" class="athlete-checkbox" value="${escapeHtml(member.id)}" ${assignmentSelectedIds.has(member.id) ? 'checked' : ''} onchange="updateAssignmentSelection(this)">
         ${avatar}
-        <span class="group-member-details"><strong>${escapeHtml(member.username || 'Membre')}</strong><small>${escapeHtml(getRoleLabel(getClubRole(member, currentUser.clubId)))}</small></span>
+        <span class="group-member-details"><strong>${escapeHtml(member.username || 'Membre')}</strong><small>${escapeHtml(getRoleLabel(getClubRole(member, currentUser.clubId)))}${pendingCount ? ` · <span class="assignment-member-pending-tag">déjà à faire${pendingCount > 1 ? ` ${pendingCount}×` : ''}</span>` : ''}</small></span>
         <span class="group-member-checkmark" aria-hidden="true">${uiIcon('check')}</span>
     </label>`;
 }
@@ -3344,6 +3355,21 @@ function renderAssignmentSelection() {
         const selectedCount = assignmentSelectedIds.size;
         count.textContent = `${selectedCount} sélectionné${selectedCount > 1 ? 's' : ''}`;
     }
+}
+
+// Nombre de fois que la séance est attribuée à chaque membre sélectionné (ex. « 2× dans la semaine »)
+let assignmentRepeat = 1;
+function setAssignmentRepeat(value) {
+    assignmentRepeat = Math.min(5, Math.max(1, Number(value) || 1));
+    const output = document.getElementById('assignment-repeat-value');
+    if(output) output.textContent = `${assignmentRepeat}×`;
+    const minus = document.getElementById('assignment-repeat-minus');
+    const plus = document.getElementById('assignment-repeat-plus');
+    if(minus) minus.disabled = assignmentRepeat <= 1;
+    if(plus) plus.disabled = assignmentRepeat >= 5;
+}
+function changeAssignmentRepeat(delta) {
+    setAssignmentRepeat(assignmentRepeat + delta);
 }
 
 function updateAssignmentSelection(checkbox) {
@@ -3378,9 +3404,12 @@ async function saveAssignments() {
             assignedAthleteIds: firebase.firestore.FieldValue.arrayUnion(...selectedIds)
         });
         const createdAssignmentIds = [];
-        selectedIds.forEach(id => {
+        const repeat = assignmentRepeat;
+        const now = Date.now();
+        selectedIds.forEach(id => { for(let copy = 0; copy < repeat; copy++) {
             const assRef = db.collection('assignments').doc();
-            createdAssignmentIds.push(assRef.id);
+            // Une seule notification par membre, même si la séance est donnée plusieurs fois
+            if(copy === 0) createdAssignmentIds.push(assRef.id);
             batch.set(assRef, {
                 clubId: currentUser.clubId,
                 sessionId: sessionToAssignId,
@@ -3395,9 +3424,10 @@ async function saveAssignments() {
                 difficulte: null,
                 fatigue: null,
                 doneAt: null,
-                assignedAt: Date.now()
+                // +copy ms : ordre stable entre les exemplaires d'une même attribution
+                assignedAt: now + copy
             });
-        });
+        } });
         await batch.commit();
         closeModal('modal-assign-session');
         notifyAssignedAthletes(createdAssignmentIds); // en arrière-plan : n'empêche jamais l'attribution
@@ -4967,8 +4997,24 @@ function renderRadarChart(canvasId, dataObj, label, color) {
 }
 
 // CALENDAR
-function renderCalendar(containerId) {
-    const targetUser = clubMembers.find(x => x.id === selectedUserIdForCalendar);
+// Statut d'un jour : 'rest' (repos), 'training' (entraînement, rouge) ou 'competition' (or pastel, avec le nom).
+// Les anciens jours n'ont que « active » : true = entraînement, false = repos.
+const CALENDAR_STATUS_LABELS = { rest: 'Repos', training: 'Entraînement', competition: 'Compétition' };
+function getCalendarDayStatus(data) {
+    if(!data) return 'rest';
+    if(CALENDAR_STATUS_LABELS[data.status]) return data.status;
+    return data.active ? 'training' : 'rest';
+}
+
+// Chaque calendrier affiché retient son membre (data-calendar-user-id) : on peut ainsi le redessiner
+// tout seul après un enregistrement ou une mise à jour en temps réel.
+function renderCalendar(containerId, userId = selectedUserIdForCalendar) {
+    const container = document.getElementById(containerId);
+    const targetUser = clubMembers.find(x => x.id === userId);
+    if(!container || !targetUser) return;
+    selectedUserIdForCalendar = userId;
+    container.dataset.calendarUserId = userId;
+    const safeUserId = escapeHtml(userId);
     const cal = (targetUser.profile && targetUser.profile.calendar) || {};
     const dStr = (d) => `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const days = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -4984,7 +5030,10 @@ function renderCalendar(containerId) {
     for(let d=1; d<=days; d++) {
         const data = cal[dStr(d)]; let cls = "calendar-day";
         if(isCurr && today.getDate() === d) cls += " today";
-        if(data && data.active) cls += " active-day";
+        const dayStatus = getCalendarDayStatus(data);
+        if(dayStatus === 'training') cls += " active-day";
+        if(dayStatus === 'competition') cls += " competition-day";
+        const competitionName = dayStatus === 'competition' ? String(data.competitionName || '').trim() : '';
         let sessionName = '';
         let sessionDone = false;
         if(data && data.assignmentId) {
@@ -5003,20 +5052,24 @@ function renderCalendar(containerId) {
         const sHtml = sessionName
             ? `<button type="button" class="cal-session-indicator" title="Ouvrir la séance « ${escapeHtml(sessionName)} »" onclick="event.stopPropagation(); openCalendarLinkedSession('${safeAssignmentId}')">${escapeHtml(sessionName)}</button>`
             : '';
-        html += `<div class="${cls}" onclick="openCalNote('${dStr(d)}')"><span class="day-number">${d}</span>${sHtml}${data?.note ? `<div class="cal-note-indicator">${escapeHtml(data.note)}</div>` : ''}<span class="cal-dots" aria-hidden="true"></span></div>`;
+        const compHtml = dayStatus === 'competition'
+            ? `<div class="cal-competition-indicator" title="${escapeHtml(competitionName || 'Compétition')}">${escapeHtml(competitionName || 'Compétition')}</div>`
+            : '';
+        html += `<div class="${cls}" onclick="openCalNote('${dStr(d)}', '${safeUserId}')"><span class="day-number">${d}</span>${compHtml}${sHtml}${data?.note ? `<div class="cal-note-indicator">${escapeHtml(data.note)}</div>` : ''}<span class="cal-dots" aria-hidden="true"></span></div>`;
 
         // Liste du mois (affichée sur téléphone, où les cases sont trop étroites pour le texte)
-        if(data && (data.active || sessionName || data.note)) {
+        if(data && (dayStatus !== 'rest' || sessionName || data.note)) {
             const weekday = weekdays[new Date(currentYear, currentMonth, d).getDay()];
             // Jour avec séance liée : on va directement à la séance. Sinon : fenêtre du jour.
             // (La note d'un jour avec séance reste modifiable en touchant la case dans le calendrier.)
             const agendaAction = sessionName
                 ? `openCalendarLinkedSession('${safeAssignmentId}')`
-                : `openCalNote('${dStr(d)}')`;
-            agendaHtml += `<button type="button" class="calendar-agenda-item${data.active ? ' active-day' : ''}${sessionName ? ' has-session' : ''}${sessionName && sessionDone ? ' session-done' : ''}" onclick="${agendaAction}">
+                : `openCalNote('${dStr(d)}', '${safeUserId}')`;
+            agendaHtml += `<button type="button" class="calendar-agenda-item${dayStatus === 'training' ? ' active-day' : ''}${dayStatus === 'competition' ? ' competition-day' : ''}${sessionName ? ' has-session' : ''}${sessionName && sessionDone ? ' session-done' : ''}" onclick="${agendaAction}">
                 <span class="calendar-agenda-date"><small>${weekday}</small><strong>${d}</strong></span>
                 <span class="calendar-agenda-body">
-                    <span class="calendar-agenda-status">${data.active ? 'Entraînement' : 'Repos'}${sessionName && sessionDone ? ' · Réalisée' : ''}</span>
+                    <span class="calendar-agenda-status">${CALENDAR_STATUS_LABELS[dayStatus]}${sessionName && sessionDone ? ' · Réalisée' : ''}</span>
+                    ${competitionName ? `<span class="calendar-agenda-competition">${escapeHtml(competitionName)}</span>` : ''}
                     ${sessionName ? `<span class="calendar-agenda-session">${escapeHtml(sessionName)}</span>` : ''}
                     ${data.note ? `<span class="calendar-agenda-note">${escapeHtml(data.note)}</span>` : ''}
                 </span>
@@ -5025,15 +5078,34 @@ function renderCalendar(containerId) {
         }
     }
     html += `</div>`;
-    html += `<div class="calendar-agenda">${agendaHtml || '<p class="calendar-agenda-empty">Rien de prévu ce mois-ci. Touchez un jour pour ajouter un entraînement ou une note.</p>'}</div>`;
-    document.getElementById(containerId).innerHTML = html;
+    html += `<div class="calendar-agenda">${agendaHtml || '<p class="calendar-agenda-empty">Rien de prévu ce mois-ci. Touchez un jour pour ajouter un entraînement, une compétition ou une note.</p>'}</div>`;
+    container.innerHTML = html;
 }
-function changeMonth(delta, cid) { currentMonth += delta; if(currentMonth < 0) { currentMonth = 11; currentYear--; } if(currentMonth > 11) { currentMonth = 0; currentYear++; } renderCalendar(cid); }
+function changeMonth(delta, cid) {
+    currentMonth += delta;
+    if(currentMonth < 0) { currentMonth = 11; currentYear--; }
+    if(currentMonth > 11) { currentMonth = 0; currentYear++; }
+    const container = document.getElementById(cid);
+    renderCalendar(cid, (container && container.dataset.calendarUserId) || selectedUserIdForCalendar);
+}
 
-function openCalNote(dateStr) {
+// Redessine les calendriers visibles (onglet profil et fenêtre de profil d'un membre)
+function refreshVisibleCalendars() {
+    ['athlete-calendar-container', 'coach-view-calendar-container'].forEach(containerId => {
+        const container = document.getElementById(containerId);
+        if(!container || !container.dataset.calendarUserId || !container.offsetParent) return;
+        renderCalendar(containerId, container.dataset.calendarUserId);
+    });
+}
+
+function openCalNote(dateStr, userId = selectedUserIdForCalendar) {
+    selectedUserIdForCalendar = userId;
     selectedDateForNote = dateStr; const targetUser = clubMembers.find(u => u.id === selectedUserIdForCalendar);
+    if(!targetUser) return alert("Le membre concerné n'est plus disponible.");
     const data = (targetUser.profile && targetUser.profile.calendar && targetUser.profile.calendar[dateStr]) || {};
-    document.getElementById('cal-note-status').value = data.active ? "true" : "false"; document.getElementById('cal-note-text').value = data.note || '';
+    document.getElementById('cal-note-status').value = getCalendarDayStatus(data);
+    document.getElementById('cal-note-competition').value = data.competitionName || '';
+    document.getElementById('cal-note-text').value = data.note || '';
     const select = document.getElementById('cal-note-session'); 
     select.innerHTML = '<option value="">-- Aucune séance --</option>';
     const userAssignments = clubAssignments.filter(a => a.athleteId === targetUser.id);
@@ -5053,8 +5125,15 @@ function openCalNote(dateStr) {
         }
     });
     enhanceChoices(document.getElementById('cal-note-status'), { variant: 'pills', label: 'Statut du jour' });
+    updateCalNoteStatus();
     updateCalNoteSessionButton();
     openModal('modal-calendar-note');
+}
+
+// Le nom de la compétition n'est demandé que pour le statut « Compétition »
+function updateCalNoteStatus() {
+    const isCompetition = document.getElementById('cal-note-status').value === 'competition';
+    document.getElementById('cal-note-competition-group').style.display = isCompetition ? '' : 'none';
 }
 
 // Bouton « Voir la séance » de la fenêtre du jour : visible dès qu'une séance est choisie
@@ -5076,17 +5155,30 @@ function openCalendarLinkedSession(assignmentId) {
 async function saveCalendarNote() {
     const u = clubMembers.find(x => x.id === selectedUserIdForCalendar);
     if(!u) return alert("Le membre concerné n'est plus disponible.");
-    const isAct = document.getElementById('cal-note-status').value==="true"; const note = document.getElementById('cal-note-text').value.trim(); const assignId = document.getElementById('cal-note-session').value;
+    const status = document.getElementById('cal-note-status').value;
+    const note = document.getElementById('cal-note-text').value.trim();
+    const assignId = document.getElementById('cal-note-session').value;
+    const competitionName = document.getElementById('cal-note-competition').value.trim().replace(/\s+/g, ' ');
+    if(status === 'competition' && !competitionName) return alert("Indiquez le nom de la compétition.");
     const calendar = { ...((u.profile && u.profile.calendar) || {}) };
-    if(!isAct && !note && !assignId) delete calendar[selectedDateForNote];
-    else calendar[selectedDateForNote] = { active: isAct, note, assignmentId: assignId || null };
+    if(status === 'rest' && !note && !assignId) delete calendar[selectedDateForNote];
+    else calendar[selectedDateForNote] = {
+        status,
+        // « active » conservé pour les anciennes versions de l'application
+        active: status === 'training',
+        note,
+        assignmentId: assignId || null,
+        ...(status === 'competition' ? { competitionName } : {})
+    };
 
     try {
         await savePrivateProfile(u.id, { 'profile.calendar': calendar });
-        u.profile.calendar = calendar;
-        if(currentUser.id === u.id) currentUser.profile.calendar = calendar;
+        u.profile = { ...(u.profile || {}), calendar };
+        if(currentUser.id === u.id) currentUser.profile = { ...(currentUser.profile || {}), calendar };
         closeModal('modal-calendar-note');
         refreshCurrentTab();
+        // Mise à jour immédiate des jours (rouge / or), y compris dans la fenêtre de profil d'un membre
+        refreshVisibleCalendars();
     } catch(error) {
         console.error("Erreur d'enregistrement de la note du calendrier:", error);
         alert("Impossible d'enregistrer cette note : " + error.message);
@@ -5391,6 +5483,7 @@ function renderSettings() {
     renderSettingsAccount();
     renderProfileClubs();
     renderSettingsFamily();
+    if(typeof renderSettingsTutorials === 'function') renderSettingsTutorials();
     const coachSection = document.getElementById('settings-coach-section');
     if(coachSection) coachSection.style.display = hasCoachRights() ? '' : 'none';
     const autoMessage = document.getElementById('coach-setting-automessage');

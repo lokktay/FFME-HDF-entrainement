@@ -1,11 +1,12 @@
 // À chaque mise en ligne : incrémenter ASSET_VERSION ici ET les « ?v=… » de index.html
-const ASSET_VERSION = '22';
+const ASSET_VERSION = '23';
 const CACHE_NAME = `ffme-cache-v${ASSET_VERSION}`;
 const urlsToCache = [
   './',
   'index.html',
   `styles.css?v=${ASSET_VERSION}`,
   `school.js?v=${ASSET_VERSION}`,
+  `tutorials.js?v=${ASSET_VERSION}`,
   `app.js?v=${ASSET_VERSION}`,
   'manifest.json',
   'icon-192.png',

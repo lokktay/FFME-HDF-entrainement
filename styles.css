@@ -1673,6 +1673,42 @@ textarea.form-control {
     box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25);
 }
 
+/* Compétition : or pastel */
+.calendar-day.competition-day {
+    background-color: #FEF9E7;
+    border-color: #F5DE9B;
+}
+
+.calendar-day.competition-day:hover {
+    background-color: #FDF1C7;
+    border-color: #E9C766;
+}
+
+.calendar-day.competition-day .day-number {
+    color: #A16207;
+    font-weight: 800;
+}
+
+.calendar-day.competition-day .cal-session-indicator {
+    background: linear-gradient(135deg, #E3B341 0%, #C9952B 100%);
+    box-shadow: 0 2px 6px rgba(201, 149, 43, 0.3);
+}
+
+.cal-competition-indicator {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #854D0E;
+    margin-top: 0.35rem;
+    background: #FBE7A6;
+    padding: 3px 6px;
+    border-radius: var(--radius-xs);
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Séance réalisée : vert, quel que soit le statut du jour */
 .calendar-day.session-done .cal-session-indicator,
 .calendar-day.active-day.session-done .cal-session-indicator {
@@ -2211,8 +2247,43 @@ textarea.form-control {
     min-height: 58px;
 }
 
-.assignment-member-pending {
-    opacity: 0.65;
+.assignment-member-pending-tag {
+    color: var(--ffme-blue-dark);
+    font-weight: 600;
+}
+
+.assignment-repeat {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin: 0.75rem 0 0.25rem;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+
+.assignment-repeat small {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.assignment-repeat-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+}
+
+.assignment-repeat-stepper span {
+    min-width: 2.2rem;
+    text-align: center;
+    font-weight: 700;
+}
+
+.assignment-repeat-stepper button:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
@@ -3139,6 +3210,12 @@ body.timer-fullscreen-open {
     .calendar-day.has-note .cal-dots::after {
         background: var(--text-muted);
     }
+    .calendar-day .cal-competition-indicator {
+        display: none;
+    }
+    .calendar-day.competition-day.has-session .cal-dots::before {
+        background: #C9952B;
+    }
 
     /* Liste lisible des jours du mois qui ont un contenu */
     .calendar-agenda {
@@ -3211,6 +3288,18 @@ body.timer-fullscreen-open {
     }
     .calendar-agenda-item.active-day .calendar-agenda-status {
         color: #DC2626;
+    }
+    .calendar-agenda-item.competition-day {
+        border-left-color: #E3B341;
+        background: #FFFBEB;
+    }
+    .calendar-agenda-item.competition-day .calendar-agenda-status {
+        color: #A16207;
+    }
+    .calendar-agenda-competition {
+        font-weight: 700;
+        font-size: 0.9rem;
+        color: #854D0E;
     }
     .calendar-agenda-item.session-done {
         border-left-color: #059669;
@@ -4609,6 +4698,23 @@ html[data-theme="dark"] .calendar-day.active-day {
 }
 html[data-theme="dark"] .calendar-day.active-day:hover {
     background-color: rgba(239, 68, 68, 0.22);
+}
+html[data-theme="dark"] .calendar-day.competition-day,
+html[data-theme="dark"] .calendar-agenda-item.competition-day {
+    background-color: rgba(234, 179, 8, 0.14);
+    border-color: rgba(234, 179, 8, 0.4);
+}
+html[data-theme="dark"] .calendar-day.competition-day:hover {
+    background-color: rgba(234, 179, 8, 0.22);
+}
+html[data-theme="dark"] .calendar-day.competition-day .day-number,
+html[data-theme="dark"] .calendar-agenda-item.competition-day .calendar-agenda-status,
+html[data-theme="dark"] .calendar-agenda-competition {
+    color: #FACC15;
+}
+html[data-theme="dark"] .cal-competition-indicator {
+    background: rgba(234, 179, 8, 0.25);
+    color: #FDE68A;
 }
 html[data-theme="dark"] .club-management-panel,
 html[data-theme="dark"] .club-select,
@@ -6848,3 +6954,224 @@ html[data-theme="dark"] .club-picker-toggle {
         height: 40px;
     }
 }
+
+
+/* === TUTORIELS (tutorials.js) === */
+.tutorial-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 11000;
+    background: rgba(15, 23, 42, 0.45);
+    animation: tutorial-fade 0.2s ease;
+}
+
+/* Anneau autour de l'élément expliqué */
+.tutorial-ring {
+    position: fixed;
+    z-index: 11002;
+    border: 3px solid #FACC15;
+    border-radius: var(--radius-md);
+    box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.3);
+    pointer-events: none;
+    transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+    animation: tutorial-pulse 1.6s ease-in-out infinite;
+}
+
+.tutorial-card {
+    position: fixed;
+    z-index: 11003;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(420px, calc(100vw - 2rem));
+    box-sizing: border-box;
+    padding: 1.1rem 1.2rem 1rem;
+    background: var(--surface);
+    color: var(--text-dark);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.3);
+    outline: none;
+    animation: tutorial-fade 0.2s ease;
+}
+.tutorial-card.is-bottom { bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+.tutorial-card.is-top { top: 1rem; }
+.tutorial-card.is-center { top: 50%; transform: translate(-50%, -50%); }
+
+.tutorial-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.tutorial-kicker {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--primary);
+}
+.tutorial-skip {
+    border: none;
+    background: none;
+    padding: 0.25rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.tutorial-skip:hover { color: var(--text-dark); text-decoration: underline; }
+.tutorial-card h3 {
+    margin: 0.4rem 0 0.35rem;
+    font-size: 1.1rem;
+    color: var(--ffme-blue-dark);
+}
+.tutorial-card p {
+    margin: 0 0 0.9rem;
+    font-size: 0.93rem;
+    line-height: 1.5;
+}
+.tutorial-card-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.tutorial-dots { display: flex; gap: 5px; flex-wrap: wrap; }
+.tutorial-dots span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border-color);
+}
+.tutorial-dots span.active { background: var(--primary); width: 18px; border-radius: 4px; }
+.tutorial-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+.tutorial-actions button { padding: 0.5rem 0.9rem; }
+
+html[data-theme="dark"] .tutorial-card h3 { color: var(--text-dark); }
+html[data-theme="dark"] .tutorial-backdrop { background: rgba(0, 0, 0, 0.6); }
+
+@keyframes tutorial-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tutorial-pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.3); }
+    50% { box-shadow: 0 0 0 9px rgba(250, 204, 21, 0.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tutorial-ring, .tutorial-card, .tutorial-backdrop { animation: none; transition: none; }
+}
+
+/* Paramètres > Tutoriels */
+.settings-tutorials-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.settings-tutorial-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+.settings-tutorial-item small {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+.settings-tutorial-item button { flex-shrink: 0; padding: 0.4rem 0.8rem; }
+
+
+/* Écran fictif d'un tutoriel (profil, calendrier, séance…) : en haut, l'explication en bas */
+.tutorial-demo {
+    position: fixed;
+    z-index: 11001;
+    top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(620px, calc(100vw - 1.5rem));
+    max-height: calc(100vh - 17rem);
+    max-height: calc(100dvh - 17rem);
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 1rem;
+    background: var(--bg-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.3);
+    pointer-events: auto;
+    user-select: none;
+    animation: tutorial-fade 0.2s ease;
+}
+.tutorial-demo .profile-section { margin-bottom: 0.75rem; }
+.tutorial-demo-badge {
+    display: inline-block;
+    margin-bottom: 0.6rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: #FEF3C7;
+    color: #92400E;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+.tutorial-demo-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border-radius: var(--radius-md);
+}
+.tutorial-demo-header strong { display: block; color: var(--ffme-blue-dark); font-size: 1.1rem; }
+.tutorial-demo-header small { color: var(--text-muted); }
+.tutorial-demo-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary);
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+.tutorial-demo-tabs { display: flex; width: 100%; margin: 0.75rem 0; }
+.tutorial-demo-tabs button { flex: 1; }
+.tutorial-demo-text { margin: 0; padding: 0.75rem; background: var(--bg-color); border-radius: var(--radius-md); font-weight: 500; }
+.tutorial-demo-cycle { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.tutorial-demo-cycle small { display: block; color: var(--text-muted); }
+.tutorial-demo-progress { flex: 0 0 40%; height: 8px; border-radius: 4px; background: var(--border-color); overflow: hidden; }
+.tutorial-demo-progress span { display: block; height: 100%; background: var(--primary); }
+.tutorial-demo-nav { display: inline-flex; align-items: center; justify-content: center; background: var(--bg-color); border: 1px solid var(--border-color); }
+.tutorial-demo-report {
+    padding: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+.tutorial-demo-report h3 { margin: 0 0 0.75rem; }
+.tutorial-demo-report h3 small { color: #059669; font-size: 0.85rem; }
+.tutorial-demo-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-bottom: 0.75rem; text-align: center; }
+.tutorial-demo-metric { padding: 0.6rem; background: var(--bg-color); border-radius: var(--radius-md); }
+.tutorial-demo-metric small { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+.tutorial-demo-metric strong { font-size: 1.4rem; font-weight: 800; }
+.tutorial-demo-note { padding: 0.75rem; background: var(--bg-color); border-radius: var(--radius-md); font-size: 0.92rem; margin: 0.5rem 0; }
+.tutorial-demo-session-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    font-size: 1.1rem;
+    color: var(--ffme-blue-dark);
+}
+.tutorial-demo-chrono { display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem; }
+.tutorial-demo-chrono svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.tutorial-demo .athlete-block-card { margin-bottom: 0.75rem; }
+.tutorial-demo-button { display: block; text-align: center; margin-top: 0.75rem; }
+.tutorial-demo-icons { display: flex; gap: 0.3rem; }
+.tutorial-demo-icons span { font-size: 0.7rem; color: var(--text-muted); padding: 0.2rem 0.4rem; border: 1px solid var(--border-color); border-radius: var(--radius-xs); }
+.tutorial-demo .session-card-actions span { display: inline-flex; align-items: center; justify-content: center; }
+html[data-theme="dark"] .tutorial-demo-badge { background: rgba(234, 179, 8, 0.25); color: #FDE68A; }
+@media (prefers-reduced-motion: reduce) { .tutorial-demo { animation: none; } }
